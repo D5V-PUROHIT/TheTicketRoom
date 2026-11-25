@@ -1744,7 +1744,6 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
   const [selectedShowId, setSelectedShowId] = useState(1);
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [blockSeatIds, setBlockSeatIds] = useState('');
 
   // Form for changing date & time of selected show (only allowed when 0 bookings exist)
   const [calDate, setCalDate] = useState(() => dateStrToIso(movie.date_str));
@@ -1925,27 +1924,6 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
       notify(`Added "${res.movie.title}" to Upcoming Releases!`, 'ok');
       setNewMovieForm((prev) => ({ ...prev, title: '', synopsis: '' }));
       loadHistory();
-    } catch (err) {
-      notify(err.message, 'err');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Seat Blocking tool
-  const handleToggleBlockSeats = async (blocked) => {
-    const ids = blockSeatIds.split(',').map((x) => parseInt(x.trim())).filter((n) => !isNaN(n));
-    if (!ids.length) return notify('Enter comma-separated seat numbers to block (e.g. 1, 2, 3)', 'warn');
-    setBusy(true);
-    try {
-      const targetId = currentShow?.id || selectedShowId || 1;
-      await api(`/admin/shows/${targetId}/block-seats`, {
-        method: 'POST',
-        body: { seatIds: ids, blocked, reason: 'VIP & Maintenance reserved' },
-      });
-      notify(blocked ? `Blocked ${ids.length} seats for VIP/Maintenance` : `Unblocked ${ids.length} seats`, 'ok');
-      setBlockSeatIds('');
-      loadStats();
     } catch (err) {
       notify(err.message, 'err');
     } finally {
@@ -2259,10 +2237,6 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
             <div style={{ fontSize: 12, color: 'var(--mute)' }}>Confirmed Booked</div>
           </div>
           <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
-            <div style={{ fontSize: 28, fontWeight: 800, color: '#64748b' }}>{s.blocked || 0}</div>
-            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Blocked (VIP/Maint)</div>
-          </div>
-          <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
             <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--ink)' }}>{inr(s.revenue)}</div>
             <div style={{ fontSize: 12, color: 'var(--mute)' }}>Total Revenue</div>
           </div>
@@ -2307,10 +2281,8 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
         </div>
       </div>
 
-      {/* Secondary Controls Row: Add Movie to Catalogue + VIP Seat Blocking */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24, marginBottom: 24 }}>
-        {/* Add Movie to Catalogue Form */}
-        <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff' }}>
+      {/* Add Movie to Catalogue Form */}
+      <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff', marginBottom: 24 }}>
           <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>Add Movie to Catalogue</h3>
           <p style={{ color: 'var(--mute)', fontSize: 12.5, marginBottom: 16 }}>
             Publish a new movie title to the theatre catalogue.
@@ -2446,45 +2418,6 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
             </button>
           </form>
         </div>
-
-        {/* Seat Blocking Tool */}
-        <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff' }}>
-          <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>VIP / Maintenance Seat Blocking</h3>
-          <p style={{ color: 'var(--mute)', fontSize: 12.5, marginBottom: 14 }}>
-            Block physical seats from customer availability. Live updates broadcast immediately.
-          </p>
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Seat IDs (1 to 100)</label>
-            <input
-              type="text"
-              placeholder="e.g. 1, 2, 3, 4"
-              value={blockSeatIds}
-              onChange={(e) => setBlockSeatIds(e.target.value)}
-              style={{ width: '100%', padding: '9px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
-            />
-          </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button
-              type="button"
-              className="btn-ghost"
-              style={{ flex: 1, borderColor: '#f87171', color: '#dc2626', padding: '10px' }}
-              onClick={() => handleToggleBlockSeats(true)}
-              disabled={busy}
-            >
-              🚫 Block Seats
-            </button>
-            <button
-              type="button"
-              className="btn-ghost"
-              style={{ flex: 1, borderColor: 'var(--mint)', color: 'var(--mint)', padding: '10px' }}
-              onClick={() => handleToggleBlockSeats(false)}
-              disabled={busy}
-            >
-              ✅ Unblock Seats
-            </button>
-          </div>
-        </div>
-      </div>
 
       {/* Movies in Database (Catalogue) Table */}
       <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff', marginBottom: 24 }}>
