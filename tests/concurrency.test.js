@@ -2,8 +2,8 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
-const app = require('../server/app');
-const pool = require('../server/db');
+const app = require('../backend/createApp');
+const { pool } = require('../backend/database/connection');
 
 let server, base;
 const call = async (path, { method = 'GET', body, token, key } = {}) => {
