@@ -92,23 +92,17 @@ export default function MovieDetailsPage({ movie, openShows = [], selectedShowId
             <div className="tier-price-box rec">
               <h5>RECLINER (Row A)</h5>
               <b>{inr(priceRecliner)}</b>
-              <div style={{ fontSize: 11, color: 'var(--mute)', marginTop: 4 }}>
-                VIP Reclining Loungers • {priceRecliner <= 100 ? '5% GST' : '18% GST'}
-              </div>
+              <div style={{ fontSize: 11, color: 'var(--mute)', marginTop: 4 }}>VIP Reclining Loungers</div>
             </div>
             <div className="tier-price-box clb">
               <h5>CLUB (Rows B-F)</h5>
               <b>{inr(priceClub)}</b>
-              <div style={{ fontSize: 11, color: 'var(--mute)', marginTop: 4 }}>
-                Optimal Center Viewing • {priceClub <= 100 ? '5% GST' : '18% GST'}
-              </div>
+              <div style={{ fontSize: 11, color: 'var(--mute)', marginTop: 4 }}>Optimal Center Viewing</div>
             </div>
             <div className="tier-price-box prm">
               <h5>PREMIUM (Rows G-J)</h5>
               <b>{inr(pricePremium)}</b>
-              <div style={{ fontSize: 11, color: 'var(--mute)', marginTop: 4 }}>
-                Standard Auditorium View • {pricePremium <= 100 ? '5% GST' : '18% GST'}
-              </div>
+              <div style={{ fontSize: 11, color: 'var(--mute)', marginTop: 4 }}>Standard Auditorium View</div>
             </div>
           </div>
         </div>

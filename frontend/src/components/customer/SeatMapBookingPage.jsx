@@ -382,19 +382,19 @@ export default function SeatMapBookingPage({ user, movie, openShows = [], select
         ) : (
           <>
             <div className="tier-divider-line">
-              <span className="tier-divider-label">{inr(priceRecliner)} RECLINER • {priceRecliner <= 100 ? '5% GST' : '18% GST'}</span>
+              <span className="tier-divider-label">{inr(priceRecliner)} RECLINER</span>
             </div>
             {renderRow('A')}
 
             <div style={{ height: 16 }}></div>
             <div className="tier-divider-line">
-              <span className="tier-divider-label">{inr(priceClub)} CLUB • {priceClub <= 100 ? '5% GST' : '18% GST'}</span>
+              <span className="tier-divider-label">{inr(priceClub)} CLUB</span>
             </div>
             {['B', 'C', 'D', 'E', 'F'].map((r) => renderRow(r))}
 
             <div style={{ height: 16 }}></div>
             <div className="tier-divider-line">
-              <span className="tier-divider-label">{inr(pricePremium)} PREMIUM • {pricePremium <= 100 ? '5% GST' : '18% GST'}</span>
+              <span className="tier-divider-label">{inr(pricePremium)} PREMIUM</span>
             </div>
             {['G', 'H', 'I', 'J'].map((r) => renderRow(r))}
 

@@ -1,5 +1,33 @@
-// Top banner, logo, search bar, login/customer navigation buttons, and live presence indicator.
+// Top banner, logo, search bar, customer navigation, interactive profile dropdown menu, and live presence indicator.
+import { useEffect, useRef, useState } from 'react';
+
 export default function Navbar({ user, isStaff, view, setView, activeMovie, online, onOpenAuth, onLogout, notify }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const profileMenuRef = useRef(null);
+
+  // Close profile dropdown when clicking outside or pressing Escape.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleOutsideClick = (e) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [user?.id, view]);
+
   return (
     <>
       <div className="top-notice">
@@ -49,26 +77,82 @@ export default function Navbar({ user, isStaff, view, setView, activeMovie, onli
 
             {user ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {!isStaff && (
-                  <>
-                    <button className={view === 'book' ? 'btn-primary' : 'btn-ghost'} onClick={() => setView('book')}>
-                      Select Seats
-                    </button>
-                    <button className={view === 'mine' ? 'btn-primary' : 'btn-ghost'} onClick={() => setView('mine')}>
-                      My Bookings
-                    </button>
-                  </>
-                )}
-                {isStaff && (
+                {!isStaff ? (
+                  <button className={view === 'book' ? 'btn-primary' : 'btn-ghost'} onClick={() => setView('book')}>
+                    Select Seats
+                  </button>
+                ) : (
                   <button className={view === 'admin' ? 'btn-primary' : 'btn-ghost'} onClick={() => setView('admin')}>
                     Dashboard
                   </button>
                 )}
-                <div className="user-badge">
-                  <span>👤</span>
-                  <span>{user.name.split(' ')[0]}</span>
+
+                {/* Clickable User / Admin Profile Dropdown */}
+                <div className="profile-menu-wrap" ref={profileMenuRef}>
+                  <button
+                    type="button"
+                    className={`user-badge ${menuOpen ? 'open' : ''}`}
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
+                    onClick={() => setMenuOpen((prev) => !prev)}
+                  >
+                    <span>👤</span>
+                    <span>{user.name.split(' ')[0]}</span>
+                    <span className="profile-caret">▾</span>
+                  </button>
+
+                  {menuOpen && (
+                    <div className="profile-dropdown" role="menu">
+                      <div className="profile-dropdown-header">
+                        <div className="profile-dropdown-name">{user.name}</div>
+                        <div className="profile-dropdown-email">{user.email}</div>
+                      </div>
+
+                      {!isStaff ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className={`profile-dropdown-item ${view === 'mine' ? 'active' : ''}`}
+                          onClick={() => {
+                            setView('mine');
+                            setMenuOpen(false);
+                          }}
+                        >
+                          <span>🎟️</span>
+                          <span>My Bookings</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className={`profile-dropdown-item ${view === 'admin' ? 'active' : ''}`}
+                          onClick={() => {
+                            setView('admin');
+                            setMenuOpen(false);
+                          }}
+                        >
+                          <span>📊</span>
+                          <span>Admin Dashboard</span>
+                        </button>
+                      )}
+
+                      <div className="profile-dropdown-divider"></div>
+
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="profile-dropdown-item danger"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          onLogout();
+                        }}
+                      >
+                        <span>🚪</span>
+                        <span>Log out</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <button className="btn-signout" onClick={onLogout}>Sign out</button>
               </div>
             ) : (
               <div style={{ display: 'flex', gap: 10 }}>
