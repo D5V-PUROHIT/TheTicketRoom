@@ -104,28 +104,28 @@ const priceFor = (tier) => (tier === 'recliner' ? 350 : tier === 'club' ? 250 : 
   }
 
   // 4. Populate Shows
-  // Show 1: Tonight's Main Show (Friday 27 November 2026, 10:00 PM) - Baahubali
+  // Show 1: Only Current Open Show (Friday 27 November 2026, 10:00 PM) - Baahubali
   await pool.query(`
     INSERT INTO shows (id, movie_id, hall_id, starts_at, date_str, time_str, price_recliner, price_club, price_premium, status)
     VALUES (1, 1, 1, '2026-11-27 22:00:00+05:30', 'Friday, 27 November, 2026', '10:00 PM', 350, 250, 180, 'open')
     ON CONFLICT (id) DO UPDATE SET
-      movie_id = EXCLUDED.movie_id, date_str = EXCLUDED.date_str, time_str = EXCLUDED.time_str, status = 'open'
+      movie_id = EXCLUDED.movie_id, starts_at = EXCLUDED.starts_at, date_str = EXCLUDED.date_str, time_str = EXCLUDED.time_str, status = 'open'
   `);
 
-  // Show 2: Early Evening Show (Friday 27 November 2026, 06:00 PM) - Ramayana
+  // Show 2: Upcoming Show (Friday 4 December 2026, 07:30 PM) - Ramayana
   await pool.query(`
     INSERT INTO shows (id, movie_id, hall_id, starts_at, date_str, time_str, price_recliner, price_club, price_premium, status)
-    VALUES (2, 2, 1, '2026-11-27 18:00:00+05:30', 'Friday, 27 November, 2026', '06:00 PM', 350, 250, 180, 'open')
+    VALUES (2, 2, 1, '2026-12-04 19:30:00+05:30', 'Friday, 4 December, 2026', '07:30 PM', 350, 250, 180, 'scheduled')
     ON CONFLICT (id) DO UPDATE SET
-      movie_id = EXCLUDED.movie_id, date_str = EXCLUDED.date_str, time_str = EXCLUDED.time_str, status = 'open'
+      movie_id = EXCLUDED.movie_id, starts_at = EXCLUDED.starts_at, date_str = EXCLUDED.date_str, time_str = EXCLUDED.time_str, status = 'scheduled'
   `);
 
-  // Show 3: Weekend Matinee (Saturday 29 November 2026, 04:15 PM) - Starlight Horizon
+  // Show 3: Upcoming Show (Friday 11 December 2026, 04:15 PM) - Starlight Horizon
   await pool.query(`
     INSERT INTO shows (id, movie_id, hall_id, starts_at, date_str, time_str, price_recliner, price_club, price_premium, status)
-    VALUES (3, 3, 1, '2026-11-29 16:15:00+05:30', 'Saturday, 29 November, 2026', '04:15 PM', 350, 250, 180, 'open')
+    VALUES (3, 3, 1, '2026-12-11 16:15:00+05:30', 'Friday, 11 December, 2026', '04:15 PM', 350, 250, 180, 'scheduled')
     ON CONFLICT (id) DO UPDATE SET
-      movie_id = EXCLUDED.movie_id, date_str = EXCLUDED.date_str, time_str = EXCLUDED.time_str, status = 'open'
+      movie_id = EXCLUDED.movie_id, starts_at = EXCLUDED.starts_at, date_str = EXCLUDED.date_str, time_str = EXCLUDED.time_str, status = 'scheduled'
   `);
 
   // 5. Clean up old bookings and show seats to re-seed cleanly
@@ -241,7 +241,7 @@ const priceFor = (tier) => (tier === 'recliner' ? 350 : tier === 'club' ? 250 : 
   console.log('✅ Seed completed successfully:');
   console.log('- 1 Hall (Galaxy Cinema - Hall 1 with 100 template seats)');
   console.log('- 4 Movies catalogue (Baahubali, Ramayana, Starlight Horizon, Chronicles of Chronos)');
-  console.log('- 3 Shows scheduled (Show 1 Baahubali @ 10:00 PM, Show 2 Ramayana @ 06:00 PM, Show 3 Starlight @ 04:15 PM)');
+  console.log('- 3 Shows seeded (Show 1 Open: Baahubali @ 10:00 PM; Show 2 & 3 Scheduled/Upcoming)');
   console.log('- 300 Show Seats created (100 per show, Show 1 seats IDs 1..100 accessible via view "seats")');
   console.log('- 500 test users seeded (user1@test.com..user500@test.com / Test@1234)');
   console.log('- Staff accounts seeded: admin@test.com (super_admin), ops@test.com, support@test.com, finance@test.com, marketing@test.com');

@@ -28,9 +28,15 @@ async function initDb() {
       console.log(`[TheTicketRoom] show_seats has ${count} seats. Auto-seeding initial theatre data...`);
       await autoSeedTheatreData();
     } else {
-      // Ensure date_str is Friday 27 November 2026
+      // Keep Show 1 (Baahubali) as the only current open show and mark other shows as scheduled (upcoming)
       await pool.query(
         `UPDATE shows SET date_str = 'Friday, 27 November, 2026', time_str = '10:00 PM' WHERE id = 1 AND (date_str LIKE '%28 November%' OR date_str IS NULL)`
+      ).catch(() => {});
+      await pool.query(
+        `UPDATE shows SET status = 'scheduled', starts_at = '2026-12-04 19:30:00+05:30', date_str = 'Friday, 4 December, 2026', time_str = '07:30 PM' WHERE id = 2`
+      ).catch(() => {});
+      await pool.query(
+        `UPDATE shows SET status = 'scheduled', starts_at = '2026-12-11 16:15:00+05:30', date_str = 'Friday, 11 December, 2026', time_str = '04:15 PM' WHERE id = 3`
       ).catch(() => {});
       await pool.query(
         `UPDATE screenings SET date_str = 'Friday, 27 November, 2026', time_str = '10:00 PM' WHERE active = true AND (date_str LIKE '%28 November%' OR date_str IS NULL)`
@@ -109,14 +115,14 @@ async function autoSeedTheatreData() {
     INSERT INTO shows (id, movie_id, hall_id, starts_at, date_str, time_str, price_recliner, price_club, price_premium, status)
     VALUES (1, 1, 1, '2026-11-27 22:00:00+05:30', 'Friday, 27 November, 2026', '10:00 PM', 350, 250, 180, 'open')
     ON CONFLICT (id) DO UPDATE SET
-      movie_id = EXCLUDED.movie_id, date_str = EXCLUDED.date_str, time_str = EXCLUDED.time_str, status = 'open';
+      movie_id = EXCLUDED.movie_id, starts_at = EXCLUDED.starts_at, date_str = EXCLUDED.date_str, time_str = EXCLUDED.time_str, status = 'open';
   `);
 
   await pool.query(`
     INSERT INTO shows (id, movie_id, hall_id, starts_at, date_str, time_str, price_recliner, price_club, price_premium, status)
-    VALUES (2, 2, 1, '2026-11-27 18:00:00+05:30', 'Friday, 27 November, 2026', '06:00 PM', 350, 250, 180, 'open')
+    VALUES (2, 2, 1, '2026-12-04 19:30:00+05:30', 'Friday, 4 December, 2026', '07:30 PM', 350, 250, 180, 'scheduled')
     ON CONFLICT (id) DO UPDATE SET
-      movie_id = EXCLUDED.movie_id, date_str = EXCLUDED.date_str, time_str = EXCLUDED.time_str, status = 'open';
+      movie_id = EXCLUDED.movie_id, starts_at = EXCLUDED.starts_at, date_str = EXCLUDED.date_str, time_str = EXCLUDED.time_str, status = 'scheduled';
   `);
 
   // 4. Show Seats for Show 1 (IDs 1..100)

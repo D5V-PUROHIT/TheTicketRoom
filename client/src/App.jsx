@@ -94,53 +94,57 @@ const initialMovie = {
   votes: '84.5K',
 };
 
-const catalogueMovies = [
+const upcomingMovies = [
   {
     id: 'ramayana',
+    isUpcoming: true,
     title: 'Ramayana - Hindi',
     genre: 'Mythology • Epic • Action',
     language: 'Hindi • Dolby Atmos 7.1',
     rating: '9.8',
-    votes: '112K',
+    votes: '112K interested',
     poster_url: '/poster-observatory.svg',
     time_str: '07:30 PM',
-    date_str: 'Friday, 27 November, 2026',
-    synopsis: 'An epic adaptation of the ancient legend of courage, righteousness, and the triumph of truth.',
+    date_str: 'Friday, 4 December, 2026',
+    synopsis: 'An epic adaptation of the timeless legend of courage, righteousness, devotion, and the triumph of truth.',
   },
   {
     id: 'starlight',
+    isUpcoming: true,
     title: 'Starlight Horizon',
     genre: 'Sci-Fi • Space Adventure',
     language: 'English, Hindi • IMAX 3D',
     rating: '9.1',
-    votes: '62K',
+    votes: '62K interested',
     poster_url: '/poster-starlight.svg',
     time_str: '04:15 PM',
-    date_str: 'Saturday, 29 November, 2026',
+    date_str: 'Friday, 11 December, 2026',
     synopsis: 'Deep space explorers venture beyond the solar perimeter to investigate a mysterious celestial resonance.',
   },
   {
     id: 'chronos',
+    isUpcoming: true,
     title: 'Chronicles of Chronos',
     genre: 'Time-Travel • Mystery Thriller',
     language: 'English • Dolby Atmos',
     rating: '8.9',
-    votes: '48K',
+    votes: '48K interested',
     poster_url: '/poster-chronos.svg',
     time_str: '01:00 PM',
-    date_str: 'Sunday, 30 November, 2026',
+    date_str: 'Friday, 18 December, 2026',
     synopsis: 'A temporal physicist races against paradoxes to prevent the collapse of the prime timeline.',
   },
   {
     id: 'nebula',
+    isUpcoming: true,
     title: 'Nebula Whispers',
     genre: 'Drama • Sci-Fi • Odyssey',
     language: 'Hindi, English • 4K Laser',
     rating: '9.3',
-    votes: '39K',
+    votes: '39K interested',
     poster_url: '/poster-nebula.svg',
     time_str: '11:15 PM',
-    date_str: 'Saturday, 29 November, 2026',
+    date_str: 'Friday, 25 December, 2026',
     synopsis: 'A poetic odyssey across forgotten interstellar colonies in search of human origin.',
   },
 ];
@@ -148,7 +152,9 @@ const catalogueMovies = [
 export default function App() {
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || 'null'));
   const [view, setView] = useState('portal'); // 'portal', 'movie-details', 'book', 'confirmed', 'mine', 'admin'
-  const [selectedMovie, setSelectedMovie] = useState(initialMovie);
+  const [activeMovie, setActiveMovie] = useState(initialMovie);
+  const [upcomingList, setUpcomingList] = useState(upcomingMovies);
+  const [upcomingModalMovie, setUpcomingModalMovie] = useState(null);
   const [lastConfirmedBooking, setLastConfirmedBooking] = useState(null);
   const [toast, setToast] = useState(null);
   const [socket, setSocket] = useState(null);
@@ -161,7 +167,7 @@ export default function App() {
   const notify = useCallback((msg, type = 'ok') => {
     setToast({ msg, type });
     clearTimeout(timer.current);
-    timer.current = setTimeout(() => setToast(null), 3800);
+    timer.current = setTimeout(() => setToast(null), 4200);
   }, []);
 
   const logout = useCallback(() => {
@@ -189,8 +195,7 @@ export default function App() {
     api('/movie')
       .then((d) => {
         if (d.movie) {
-          const merged = { ...initialMovie, ...d.movie };
-          setSelectedMovie(merged);
+          setActiveMovie({ ...initialMovie, ...d.movie });
         }
       })
       .catch(() => {});
@@ -206,7 +211,7 @@ export default function App() {
     const s = io({ auth: { token } });
     s.on('presence', (count) => setOnline(count || 1));
     s.on('movie:update', (updated) => {
-      setSelectedMovie((prev) => ({ ...prev, ...updated }));
+      setActiveMovie((prev) => ({ ...prev, ...updated }));
       notify(`Cinema schedule updated: ${updated.title}`, 'ok');
     });
     setSocket(s);
@@ -216,14 +221,18 @@ export default function App() {
     };
   }, [notify]);
 
-  const handleBookMovie = (m) => {
-    setSelectedMovie(m);
+  const handleBookCurrentShow = () => {
+    setUpcomingModalMovie(null);
     setView('book');
   };
 
-  const handleViewMovieDetails = (m) => {
-    setSelectedMovie(m);
+  const handleViewMovieDetails = () => {
     setView('movie-details');
+  };
+
+  const handleSelectUpcoming = (item) => {
+    notify(`🗓️ "${item.title}" is an upcoming release (${item.date_str}). Bookings are not open yet!`, 'warn');
+    setUpcomingModalMovie(item);
   };
 
   const handleBookingSuccess = (booking) => {
@@ -268,7 +277,7 @@ export default function App() {
               type="text"
               placeholder="Search movies, halls, genres, premium experiences..."
               readOnly
-              onClick={() => notify('Showing all screenings for Friday, 27th Nov', 'ok')}
+              onClick={() => notify(`Now Showing: ${activeMovie.title} (${activeMovie.date_str} at ${activeMovie.time_str})`, 'ok')}
             />
           </div>
 
@@ -350,18 +359,19 @@ export default function App() {
         {/* VIEW 1: Portal Landing Page */}
         {view === 'portal' && (
           <PortalView
-            movie={selectedMovie}
-            catalogue={catalogueMovies}
-            onBook={() => handleBookMovie(selectedMovie)}
+            movie={activeMovie}
+            upcoming={upcomingList}
+            onBook={handleBookCurrentShow}
             onSelectMovie={handleViewMovieDetails}
+            onSelectUpcoming={handleSelectUpcoming}
           />
         )}
 
-        {/* VIEW 2: Movie Details Page */}
+        {/* VIEW 2: Movie Details Page (Current Show) */}
         {view === 'movie-details' && (
           <MovieDetailsView
-            movie={selectedMovie}
-            onBook={() => handleBookMovie(selectedMovie)}
+            movie={activeMovie}
+            onBook={handleBookCurrentShow}
             onBack={() => setView('portal')}
           />
         )}
@@ -370,7 +380,7 @@ export default function App() {
         {view === 'book' && (
           <TheatreSeatSelection
             user={user}
-            movie={selectedMovie}
+            movie={activeMovie}
             socket={socket}
             online={online}
             notify={notify}
@@ -384,7 +394,7 @@ export default function App() {
         {view === 'confirmed' && (
           <BookingConfirmedModal
             booking={lastConfirmedBooking}
-            movie={selectedMovie}
+            movie={activeMovie}
             onClose={() => setView('portal')}
             onViewAllBookings={() => setView('mine')}
           />
@@ -393,24 +403,34 @@ export default function App() {
         {/* VIEW 5: My Bookings Passes */}
         {view === 'mine' && (
           <MyBookingsView
-            movie={selectedMovie}
+            movie={activeMovie}
             notify={notify}
             onGoBook={() => setView('book')}
           />
         )}
 
-        {/* VIEW 6: Full Admin Back-Office Console (Phase 3 & Phase 4) */}
+        {/* VIEW 6: Unified Admin Dashboard */}
         {view === 'admin' && isStaff && (
           <AdminDashboardView
             user={user}
-            setUser={setUser}
             socket={socket}
-            movie={selectedMovie}
-            setMovie={setSelectedMovie}
+            movie={activeMovie}
+            setMovie={setActiveMovie}
+            onAddUpcoming={(m) => setUpcomingList((prev) => [m, ...prev])}
             notify={notify}
           />
         )}
       </main>
+
+      {/* Upcoming Show Notice Modal */}
+      {upcomingModalMovie && (
+        <UpcomingShowModal
+          upcomingMovie={upcomingModalMovie}
+          currentMovie={activeMovie}
+          onBookCurrent={handleBookCurrentShow}
+          onClose={() => setUpcomingModalMovie(null)}
+        />
+      )}
 
       {/* Trust & Legal Footer */}
       <footer style={{ borderTop: '1px solid var(--line)', background: '#ffffff', padding: '36px 24px 28px', marginTop: 50, textAlign: 'center' }}>
@@ -458,7 +478,12 @@ export default function App() {
 /* ==========================================================
    VIEW 1: PORTAL LANDING VIEW
    ========================================================== */
-function PortalView({ movie, catalogue, onBook, onSelectMovie }) {
+function PortalView({ movie, upcoming, onBook, onSelectMovie, onSelectUpcoming }) {
+  const scrollToUpcoming = () => {
+    const el = document.getElementById('upcoming-releases');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  };
+
   return (
     <div className="hero-portal">
       {/* Featured Screening Hero */}
@@ -519,57 +544,110 @@ function PortalView({ movie, catalogue, onBook, onSelectMovie }) {
         </div>
       </section>
 
-      {/* Recommended Movies Section */}
-      <div style={{ margin: '36px 0 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ fontSize: 22 }}>Recommended Screenings & Upcoming Releases</h2>
-        <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600, cursor: 'pointer' }}>
-          Explore all titles →
+      {/* Now Showing Section (Exclusively Current Show) */}
+      <div style={{ margin: '36px 0 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h2 style={{ fontSize: 22 }}>Now Showing</h2>
+          <span style={{ background: 'var(--mint-soft)', color: '#15803d', border: '1px solid rgba(56,194,143,0.4)', padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700 }}>
+            ● Booking Open • Hall 1
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={scrollToUpcoming}
+          style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 700, cursor: 'pointer' }}
+        >
+          See Upcoming Releases ({upcoming.length}) ↓
+        </button>
+      </div>
+
+      <article className="now-showing-card">
+        <div
+          onClick={() => onSelectMovie(movie)}
+          style={{ position: 'relative', minHeight: 300, background: '#1c1917', cursor: 'pointer' }}
+        >
+          <img
+            src={movie.poster_url || '/posters/bahubali.jpg'}
+            alt={movie.title}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            onError={(e) => { e.target.src = '/posters/bahubali.jpg'; }}
+          />
+          <span style={{ position: 'absolute', top: 10, left: 10, background: '#16a34a', color: '#ffffff', padding: '4px 10px', borderRadius: 99, fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>
+            ● NOW SHOWING
+          </span>
+          <span style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(0,0,0,0.78)', color: '#fbbf24', padding: '3px 9px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
+            ★ {movie.rating || '9.6'}/10
+          </span>
+        </div>
+
+        <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-soft)', padding: '3px 10px', borderRadius: 99 }}>
+                {movie.certificate || 'U/A 13+'}
+              </span>
+              <span style={{ fontSize: 12.5, color: 'var(--mute)', fontWeight: 600 }}>
+                {movie.genre} • {movie.language}
+              </span>
+            </div>
+
+            <h3
+              onClick={() => onSelectMovie(movie)}
+              style={{ fontSize: 24, marginBottom: 8, cursor: 'pointer', color: 'var(--ink)' }}
+            >
+              {movie.title}
+            </h3>
+
+            <p style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.6, marginBottom: 16, maxWidth: 680 }}>
+              {movie.synopsis}
+            </p>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+              <div style={{ background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 14px', fontSize: 13 }}>
+                <span style={{ color: 'var(--mute)' }}>Show Date: </span>
+                <b>{movie.date_str}</b>
+              </div>
+              <div style={{ background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 14px', fontSize: 13 }}>
+                <span style={{ color: 'var(--mute)' }}>Showtime: </span>
+                <b style={{ color: 'var(--accent)' }}>{movie.time_str} • Hall 1</b>
+              </div>
+              <div style={{ background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 14px', fontSize: 13 }}>
+                <span style={{ color: 'var(--mute)' }}>Tickets from </span>
+                <b>{inr(180)} – {inr(350)}</b>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+            <button className="btn-primary" style={{ padding: '10px 24px', fontSize: 14 }} onClick={onBook}>
+              🎟️ Book Tickets ({movie.time_str})
+            </button>
+            <button className="btn-ghost" onClick={() => onSelectMovie(movie)}>
+              View Details & Cast
+            </button>
+          </div>
+        </div>
+      </article>
+
+      {/* Upcoming Releases Section */}
+      <div id="upcoming-releases" style={{ margin: '42px 0 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h2 style={{ fontSize: 22 }}>Upcoming Shows</h2>
+          <span style={{ background: 'var(--peach-soft)', color: '#c2410c', border: '1px solid rgba(255,181,146,0.55)', padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700 }}>
+            🗓️ Coming Soon • Bookings Not Open
+          </span>
+        </div>
+        <span style={{ fontSize: 12.5, color: 'var(--mute)' }}>
+          Click any upcoming release to view release details
         </span>
       </div>
 
       <div className="movies-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 20 }}>
-        {/* Active Movie Card */}
-        <article
-          className="movie-card"
-          onClick={() => onSelectMovie(movie)}
-          style={{
-            cursor: 'pointer',
-            background: '#fff',
-            borderRadius: 14,
-            border: '1px solid var(--line)',
-            overflow: 'hidden',
-            boxShadow: 'var(--shadow-sm)',
-            transition: 'transform 0.2s, box-shadow 0.2s',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
-        >
-          <div style={{ position: 'relative', height: 320, background: '#1c1917' }}>
-            <img
-              src={movie.poster_url || '/posters/bahubali.jpg'}
-              alt={movie.title}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              onError={(e) => { e.target.src = '/posters/bahubali.jpg'; }}
-            />
-            <span style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(0,0,0,0.75)', color: '#fbbf24', padding: '3px 8px', borderRadius: 4, fontSize: 12, fontWeight: 700 }}>
-              ★ {movie.rating || '9.6'}/10
-            </span>
-          </div>
-          <div style={{ padding: '14px 16px' }}>
-            <h3 style={{ fontSize: 16, marginBottom: 4 }}>{movie.title}</h3>
-            <p style={{ fontSize: 12, color: 'var(--mute)' }}>{movie.genre}</p>
-            <p style={{ fontSize: 11.5, color: 'var(--accent)', fontWeight: 700, marginTop: 8 }}>
-              Tonight at {movie.time_str} • Hall 1
-            </p>
-          </div>
-        </article>
-
-        {/* Catalogue Movies */}
-        {catalogue.map((item) => (
+        {upcoming.map((item) => (
           <article
             key={item.id}
             className="movie-card"
-            onClick={() => onSelectMovie(item)}
+            onClick={() => onSelectUpcoming(item)}
             style={{
               cursor: 'pointer',
               background: '#fff',
@@ -578,29 +656,146 @@ function PortalView({ movie, catalogue, onBook, onSelectMovie }) {
               overflow: 'hidden',
               boxShadow: 'var(--shadow-sm)',
               transition: 'transform 0.2s, box-shadow 0.2s',
+              display: 'flex',
+              flexDirection: 'column',
             }}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
           >
-            <div style={{ position: 'relative', height: 320, background: '#172554' }}>
+            <div style={{ position: 'relative', height: 310, background: '#172554' }}>
               <img
                 src={item.poster_url}
                 alt={item.title}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
+              <span style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(43, 39, 66, 0.88)', color: '#ffb592', border: '1px solid rgba(255,181,146,0.45)', padding: '3px 9px', borderRadius: 99, fontSize: 10.5, fontWeight: 800, letterSpacing: '0.05em' }}>
+                🗓️ UPCOMING
+              </span>
               <span style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(0,0,0,0.75)', color: '#fbbf24', padding: '3px 8px', borderRadius: 4, fontSize: 12, fontWeight: 700 }}>
                 ★ {item.rating}/10
               </span>
             </div>
-            <div style={{ padding: '14px 16px' }}>
-              <h3 style={{ fontSize: 16, marginBottom: 4 }}>{item.title}</h3>
-              <p style={{ fontSize: 12, color: 'var(--mute)' }}>{item.genre}</p>
-              <p style={{ fontSize: 11.5, color: '#64748b', fontWeight: 600, marginTop: 8 }}>
-                {item.date_str}
-              </p>
+            <div style={{ padding: '14px 16px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <h3 style={{ fontSize: 16, marginBottom: 4 }}>{item.title}</h3>
+                <p style={{ fontSize: 12, color: 'var(--mute)' }}>{item.genre}</p>
+              </div>
+              <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 11.5, color: '#64748b', fontWeight: 600 }}>
+                  {item.date_str}
+                </span>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-soft)', padding: '2px 8px', borderRadius: 99, whiteSpace: 'nowrap' }}>
+                  Coming Soon
+                </span>
+              </div>
             </div>
           </article>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* ==========================================================
+   UPCOMING SHOW NOTICE MODAL
+   ========================================================== */
+function UpcomingShowModal({ upcomingMovie, currentMovie, onBookCurrent, onClose }) {
+  if (!upcomingMovie) return null;
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(30, 25, 50, 0.65)',
+        backdropFilter: 'blur(6px)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="upcoming-modal-title"
+        style={{
+          background: '#ffffff',
+          borderRadius: 16,
+          maxWidth: 500,
+          width: '100%',
+          boxShadow: 'var(--shadow-lg)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '16px 22px',
+            borderBottom: '1px solid var(--line)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            background: 'var(--bg)',
+          }}
+        >
+          <span style={{ background: 'var(--peach-soft)', color: '#c2410c', border: '1px solid rgba(255,181,146,0.6)', padding: '4px 12px', borderRadius: 99, fontSize: 12, fontWeight: 800 }}>
+            🗓️ UPCOMING SHOW
+          </span>
+          <button onClick={onClose} aria-label="Close dialog" style={{ fontSize: 18, color: 'var(--mute)' }}>✕</button>
+        </div>
+
+        <div style={{ padding: '22px' }}>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 18 }}>
+            <img
+              src={upcomingMovie.poster_url}
+              alt={upcomingMovie.title}
+              style={{ width: 92, height: 136, objectFit: 'cover', borderRadius: 10, border: '1px solid var(--line)', flexShrink: 0 }}
+            />
+            <div>
+              <h3 id="upcoming-modal-title" style={{ fontSize: 20, marginBottom: 6, color: 'var(--ink)' }}>
+                {upcomingMovie.title}
+              </h3>
+              <p style={{ fontSize: 12.5, color: 'var(--mute)', marginBottom: 6 }}>
+                {upcomingMovie.genre}
+              </p>
+              <p style={{ fontSize: 12.5, color: 'var(--accent)', fontWeight: 700, marginBottom: 8 }}>
+                {upcomingMovie.language}
+              </p>
+              <p style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.5 }}>
+                {upcomingMovie.synopsis}
+              </p>
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: 'var(--peach-soft)',
+              border: '1px solid rgba(255, 181, 146, 0.7)',
+              borderRadius: 12,
+              padding: '14px 16px',
+              marginBottom: 20,
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#9a3412', marginBottom: 4 }}>
+              Bookings are not open yet — this is an upcoming show
+            </div>
+            <p style={{ fontSize: 13, color: '#7c2d12', lineHeight: 1.5, margin: 0 }}>
+              <b>{upcomingMovie.title}</b> is scheduled to premiere on <b>{upcomingMovie.date_str}</b>.
+              Currently, only <b>{currentMovie.title}</b> ({currentMovie.date_str} at {currentMovie.time_str}) is showing and open for seat reservations.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            <button type="button" className="btn-ghost" onClick={onClose}>
+              Close
+            </button>
+            <button type="button" className="btn-primary" onClick={onBookCurrent}>
+              🎟️ Book Current Show ({currentMovie.title})
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -650,20 +845,36 @@ function MovieDetailsView({ movie, onBook, onBack }) {
             {movie.synopsis}
           </p>
 
-          {/* Tonight's Featured Screening Card */}
-          <div className="show-card-featured">
-            <div className="show-time-badge">
-              <div className="show-time-box">{movie.time_str || '10:00 PM'}</div>
-              <div className="show-hall-desc">
-                <b>Galaxy Cinema • Hall 1</b>
-                <span>{movie.date_str || 'Friday, 27 November, 2026'} • Dolby Atmos 7.1</span>
+          {/* Screening Card */}
+          {movie.isUpcoming ? (
+            <div className="show-card-featured" style={{ background: 'var(--peach-soft)', borderColor: 'rgba(255,181,146,0.7)' }}>
+              <div>
+                <b style={{ fontSize: 15, color: '#9a3412', display: 'block', marginBottom: 4 }}>
+                  🗓️ Upcoming Release — Bookings Not Open Yet
+                </b>
+                <span style={{ fontSize: 13, color: '#7c2d12' }}>
+                  Scheduled for {movie.date_str}. Please check back closer to release date.
+                </span>
               </div>
+              <button className="btn-ghost" onClick={onBack}>
+                Back to Current Show
+              </button>
             </div>
+          ) : (
+            <div className="show-card-featured">
+              <div className="show-time-badge">
+                <div className="show-time-box">{movie.time_str || '10:00 PM'}</div>
+                <div className="show-hall-desc">
+                  <b>Galaxy Cinema • Hall 1</b>
+                  <span>{movie.date_str || 'Friday, 27 November, 2026'} • Dolby Atmos 7.1</span>
+                </div>
+              </div>
 
-            <button className="btn-primary" style={{ padding: '12px 28px', fontSize: 15 }} onClick={onBook}>
-              Book Tickets ({movie.time_str || '10:00 PM'})
-            </button>
-          </div>
+              <button className="btn-primary" style={{ padding: '12px 28px', fontSize: 15 }} onClick={onBook}>
+                Book Tickets ({movie.time_str || '10:00 PM'})
+              </button>
+            </div>
+          )}
 
           {/* Seat Tiers Pricing Card */}
           <div className="tiers-pricing-bar">
@@ -1342,21 +1553,15 @@ function TicketPassCard({ booking, movie, onCancel }) {
 }
 
 /* ==========================================================
-   VIEW 6: FULL ADMIN BACK-OFFICE CONSOLE (PHASE 3 & 4)
+   VIEW 6: UNIFIED ADMIN DASHBOARD
    ========================================================== */
-function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) {
-  const [tab, setTab] = useState('overview'); // overview, shows, catalogue, support, finance, audit
+function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, notify }) {
   const [s, setS] = useState(null);
   const [history, setHistory] = useState([]);
-  const [supportBookings, setSupportBookings] = useState([]);
-  const [financeSummary, setFinanceSummary] = useState(null);
-  const [auditLogs, setAuditLogs] = useState([]);
-  const [usersList, setUsersList] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [searchQ, setSearchQ] = useState('');
   const [blockSeatIds, setBlockSeatIds] = useState('');
 
-  // Form for changing date & time of active movie with calendar picker support
+  // Form for changing date & time of active movie
   const [calDate, setCalDate] = useState(() => dateStrToIso(movie.date_str));
   const [calTime, setCalTime] = useState(() => timeStrTo24h(movie.time_str));
   const [schedForm, setSchedForm] = useState({
@@ -1364,7 +1569,7 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
     time_str: movie.time_str || '10:00 PM',
   });
 
-  // Keep calendar picker synchronized when movie updates
+  // Synchronize inputs when movie updates
   useEffect(() => {
     if (movie.date_str) {
       setSchedForm({
@@ -1388,37 +1593,21 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
     setSchedForm((prev) => ({ ...prev, time_str: formatted }));
   };
 
-  // Form for adding a new movie with calendar premiere date
-  const [newMovieCalDate, setNewMovieCalDate] = useState('2026-11-27');
-  const [newMovieCalTime, setNewMovieCalTime] = useState('22:00');
+  // Form for adding an upcoming movie to catalogue
+  const [newMovieCalDate, setNewMovieCalDate] = useState('2026-12-04');
+  const [newMovieCalTime, setNewMovieCalTime] = useState('20:00');
   const [newMovieForm, setNewMovieForm] = useState({
     title: '',
     synopsis: '',
-    poster_url: '/posters/bahubali.jpg',
-    genres: 'Action • Epic • Mythology • Drama',
+    poster_url: '/poster-observatory.svg',
+    genres: 'Action • Epic • Drama',
     language: 'Hindi, Telugu',
     certificate: 'U/A 13+',
     runtime_mins: 159,
     cast_members: 'Lead Cast',
-    date_str: 'Friday, 27 November, 2026',
-    time_str: '10:00 PM',
+    date_str: 'Friday, 4 December, 2026',
+    time_str: '08:00 PM',
   });
-
-  // 1-Click Role Switcher for Assessment Verification
-  const switchRole = async (email, pass) => {
-    setBusy(true);
-    try {
-      const res = await api('/auth/login', { method: 'POST', body: { email, password: pass } });
-      localStorage.setItem('token', res.token);
-      localStorage.setItem('user', JSON.stringify(res.user));
-      setUser(res.user);
-      notify(`Switched session to role: ${res.user.role}`, 'ok');
-    } catch (e) {
-      notify(e.message, 'err');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const loadStats = useCallback(() => {
     api('/admin/stats').then(setS).catch((e) => notify(e.message, 'err'));
@@ -1428,33 +1617,9 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
     api('/admin/movies').then((d) => setHistory(d.movies || [])).catch(() => {});
   }, []);
 
-  const loadSupportBookings = useCallback((q = '') => {
-    api(`/admin/bookings${q ? `?q=${encodeURIComponent(q)}` : ''}`)
-      .then((d) => setSupportBookings(d.bookings || []))
-      .catch((e) => notify(e.message, 'err'));
-  }, [notify]);
-
-  const loadFinance = useCallback(() => {
-    api('/admin/finance/summary')
-      .then(setFinanceSummary)
-      .catch((e) => notify(e.message, 'err'));
-  }, [notify]);
-
-  const loadAudit = useCallback(() => {
-    api('/admin/audit-logs')
-      .then((d) => setAuditLogs(d.logs || []))
-      .catch((e) => notify(e.message, 'err'));
-    api('/admin/users')
-      .then((d) => setUsersList(d.users || []))
-      .catch(() => {});
-  }, [notify]);
-
   useEffect(() => {
     loadStats();
     loadHistory();
-    if (tab === 'support') loadSupportBookings(searchQ);
-    if (tab === 'finance') loadFinance();
-    if (tab === 'audit') loadAudit();
 
     if (!socket) return;
     let t;
@@ -1467,9 +1632,9 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
       socket.off('seats:update', h);
       clearTimeout(t);
     };
-  }, [socket, tab, loadStats, loadHistory, loadSupportBookings, loadFinance, loadAudit, searchQ]);
+  }, [socket, loadStats, loadHistory]);
 
-  // Update schedule of active movie
+  // Update schedule of active movie (Baahubali)
   const handleUpdateSchedule = async (e) => {
     e.preventDefault();
     setBusy(true);
@@ -1485,21 +1650,29 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
     }
   };
 
-  // Add new movie with optional premiere scheduling
+  // Add new movie as upcoming release while keeping Baahubali as the current open show
   const handleAddNewMovie = async (e) => {
     e.preventDefault();
     if (!newMovieForm.title.trim()) return notify('Movie title is required', 'err');
     setBusy(true);
     try {
       const res = await api('/admin/movies', { method: 'POST', body: newMovieForm });
-      if (newMovieForm.date_str && newMovieForm.time_str) {
-        await api('/admin/movies/schedule', {
-          method: 'PUT',
-          body: { date_str: newMovieForm.date_str, time_str: newMovieForm.time_str },
-        }).catch(() => {});
+      if (onAddUpcoming) {
+        onAddUpcoming({
+          id: `custom-${res.movie.id}`,
+          isUpcoming: true,
+          title: res.movie.title,
+          genre: res.movie.genres || newMovieForm.genres,
+          language: res.movie.language || newMovieForm.language,
+          rating: '9.0',
+          poster_url: res.movie.poster_url || newMovieForm.poster_url,
+          date_str: newMovieForm.date_str,
+          time_str: newMovieForm.time_str,
+          synopsis: res.movie.synopsis || newMovieForm.synopsis || 'Upcoming theatrical release at Galaxy Cinema.',
+        });
       }
-      setMovie({ ...movie, ...res.movie, date_str: newMovieForm.date_str, time_str: newMovieForm.time_str });
-      notify(`New movie published: ${res.movie.title}!`, 'ok');
+      notify(`Added "${res.movie.title}" to Upcoming Releases!`, 'ok');
+      setNewMovieForm((prev) => ({ ...prev, title: '', synopsis: '' }));
       loadHistory();
     } catch (err) {
       notify(err.message, 'err');
