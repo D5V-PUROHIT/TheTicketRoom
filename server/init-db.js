@@ -44,6 +44,19 @@ async function initDb() {
       await pool.query(
         `UPDATE screenings SET date_str = 'Friday, 27 November, 2026', time_str = '10:00 PM' WHERE active = true AND (date_str LIKE '%28 November%' OR date_str IS NULL)`
       ).catch(() => {});
+
+      // One-time tracked migration: restore Show 1 from '01:00 PM' back to '10:00 PM' if not already migrated
+      try {
+        const { rows: mig } = await pool.query(`SELECT 1 FROM audit_logs WHERE action = 'MIGRATE_RESTORE_10PM_V1' LIMIT 1`);
+        if (!mig.length) {
+          await pool.query(`UPDATE shows SET time_str = '10:00 PM', starts_at = '2026-11-27 22:00:00+05:30' WHERE id = 1 AND time_str = '01:00 PM'`);
+          await pool.query(`UPDATE screenings SET time_str = '10:00 PM' WHERE active = true AND time_str = '01:00 PM'`);
+          await pool.query(
+            `INSERT INTO audit_logs (action, target_type, target_id, reason) VALUES ('MIGRATE_RESTORE_10PM_V1', 'show', 1, 'Restore default 10:00 PM showtime')`
+          );
+        }
+      } catch {}
+
       await syncSequences();
       console.log('[TheTicketRoom] Theatre seats & schedule verified.');
     }

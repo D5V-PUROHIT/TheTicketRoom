@@ -384,6 +384,7 @@ app.post('/api/holds', auth, wrap(async (req, res) => {
 // ---------- Bookings & Pricing Calculations ----------
 const bookingSelect = `SELECT b.id, b.show_id, b.reference, b.total_price, b.subtotal, b.discount_amount,
   b.convenience_fee, b.gst_amount, b.coupon_code, b.status, b.created_at,
+  (SELECT u2.email FROM users u2 WHERE u2.id = b.user_id) AS email,
   (SELECT sh.date_str FROM shows sh WHERE sh.id = b.show_id) AS show_date_str,
   (SELECT sh.time_str FROM shows sh WHERE sh.id = b.show_id) AS show_time_str,
   coalesce(
