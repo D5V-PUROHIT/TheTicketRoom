@@ -149,9 +149,11 @@ const upcomingMovies = [
   },
 ];
 
+const isStaffRole = (role) => ['admin', 'super_admin', 'operations', 'support', 'finance', 'marketing'].includes(role);
+
 export default function App() {
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || 'null'));
-  const [view, setView] = useState('portal'); // 'portal', 'movie-details', 'book', 'confirmed', 'mine', 'admin'
+  const [view, setView] = useState(() => (isStaffRole(JSON.parse(localStorage.getItem('user') || 'null')?.role) ? 'admin' : 'portal')); // 'portal', 'movie-details', 'book', 'confirmed', 'mine', 'admin'
   const [activeMovie, setActiveMovie] = useState(initialMovie);
   const [upcomingList, setUpcomingList] = useState(upcomingMovies);
   const [upcomingModalMovie, setUpcomingModalMovie] = useState(null);
@@ -181,6 +183,7 @@ export default function App() {
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
+    setView(isStaffRole(data.user?.role) ? 'admin' : 'portal');
     setShowAuthModal(false);
     notify(`Welcome back, ${data.user.name}!`, 'ok');
   };
@@ -240,7 +243,14 @@ export default function App() {
     setView('confirmed');
   };
 
-  const isStaff = user && ['admin', 'super_admin', 'operations', 'support', 'finance', 'marketing'].includes(user.role);
+  const isStaff = Boolean(user && isStaffRole(user.role));
+
+  // Ensure admin/staff users remain strictly inside the Admin Dashboard
+  useEffect(() => {
+    if (isStaff && view !== 'admin') {
+      setView('admin');
+    }
+  }, [isStaff, view]);
 
   return (
     <>
@@ -255,7 +265,7 @@ export default function App() {
       {/* Main Brand Navigation Bar */}
       <header className="portal-nav">
         <div className="portal-nav-inner">
-          <div className="brand-wrap" onClick={() => setView('portal')}>
+          <div className="brand-wrap" onClick={() => setView(isStaff ? 'admin' : 'portal')}>
             <div className="brand-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="4" width="20" height="16" rx="3" />
@@ -268,45 +278,53 @@ export default function App() {
             </span>
           </div>
 
-          <div className="search-bar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            <input
-              type="text"
-              placeholder="Search movies, halls, genres, premium experiences..."
-              readOnly
-              onClick={() => notify(`Now Showing: ${activeMovie.title} (${activeMovie.date_str} at ${activeMovie.time_str})`, 'ok')}
-            />
-          </div>
+          {!isStaff && (
+            <div className="search-bar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input
+                type="text"
+                placeholder="Search movies, halls, genres, premium experiences..."
+                readOnly
+                onClick={() => notify(`Now Showing: ${activeMovie.title} (${activeMovie.date_str} at ${activeMovie.time_str})`, 'ok')}
+              />
+            </div>
+          )}
 
           <div className="nav-actions">
-            <div className="hall-pill">
-              <span>📍</span>
-              <span>Hall 1: <b>Galaxy Cinema</b></span>
-            </div>
+            {!isStaff && (
+              <div className="hall-pill">
+                <span>📍</span>
+                <span>Hall 1: <b>Galaxy Cinema</b></span>
+              </div>
+            )}
 
             {user ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <button
-                  className={view === 'book' ? 'btn-primary' : 'btn-ghost'}
-                  onClick={() => setView('book')}
-                >
-                  Select Seats
-                </button>
-                <button
-                  className={view === 'mine' ? 'btn-primary' : 'btn-ghost'}
-                  onClick={() => setView('mine')}
-                >
-                  My Bookings
-                </button>
+                {!isStaff && (
+                  <>
+                    <button
+                      className={view === 'book' ? 'btn-primary' : 'btn-ghost'}
+                      onClick={() => setView('book')}
+                    >
+                      Select Seats
+                    </button>
+                    <button
+                      className={view === 'mine' ? 'btn-primary' : 'btn-ghost'}
+                      onClick={() => setView('mine')}
+                    >
+                      My Bookings
+                    </button>
+                  </>
+                )}
                 {isStaff && (
                   <button
                     className={view === 'admin' ? 'btn-primary' : 'btn-ghost'}
                     onClick={() => setView('admin')}
                   >
-                    Admin Console ({user.role})
+                    Dashboard
                   </button>
                 )}
                 <div className="user-badge">
@@ -330,87 +348,35 @@ export default function App() {
           </div>
         </div>
 
-        {/* Secondary Category Bar */}
-        <div className="cat-bar">
-          <div className="cat-bar-inner">
-            <div className="cat-nav-group">
-              <span className={`cat-item ${view === 'portal' ? 'active' : ''}`} onClick={() => setView('portal')}>
-                Movies
-              </span>
-              <span className="cat-item" onClick={() => setView('book')}>
-                Live Hall 1
-              </span>
-              <span className="cat-item" onClick={() => notify('Dolby Atmos 7.1 Laser Projection Active', 'ok')}>
-                Experiences
-              </span>
-              <span className="cat-item" onClick={() => notify('Promo codes TICKET50 & CINEMA20 available at checkout', 'ok')}>
-                Offers (Coupons Active)
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: 16, fontSize: 12.5 }}>
-              <span style={{ color: 'var(--mint)', fontWeight: 700 }}>● {online} active booking now</span>
+        {/* Secondary Category Bar (Customers Only) */}
+        {!isStaff && (
+          <div className="cat-bar">
+            <div className="cat-bar-inner">
+              <div className="cat-nav-group">
+                <span className={`cat-item ${view === 'portal' ? 'active' : ''}`} onClick={() => setView('portal')}>
+                  Movies
+                </span>
+                <span className="cat-item" onClick={() => setView('book')}>
+                  Live Hall 1
+                </span>
+                <span className="cat-item" onClick={() => notify('Dolby Atmos 7.1 Laser Projection Active', 'ok')}>
+                  Experiences
+                </span>
+                <span className="cat-item" onClick={() => notify('Promo codes TICKET50 & CINEMA20 available at checkout', 'ok')}>
+                  Offers (Coupons Active)
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 16, fontSize: 12.5 }}>
+                <span style={{ color: 'var(--mint)', fontWeight: 700 }}>● {online} active booking now</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </header>
 
       {/* Main Application Body */}
       <main>
-        {/* VIEW 1: Portal Landing Page */}
-        {view === 'portal' && (
-          <PortalView
-            movie={activeMovie}
-            upcoming={upcomingList}
-            onBook={handleBookCurrentShow}
-            onSelectMovie={handleViewMovieDetails}
-            onSelectUpcoming={handleSelectUpcoming}
-          />
-        )}
-
-        {/* VIEW 2: Movie Details Page (Current Show) */}
-        {view === 'movie-details' && (
-          <MovieDetailsView
-            movie={activeMovie}
-            onBook={handleBookCurrentShow}
-            onBack={() => setView('portal')}
-          />
-        )}
-
-        {/* VIEW 3: Seat Selection Theatre Map with Phase 4 Payments & Coupons */}
-        {view === 'book' && (
-          <TheatreSeatSelection
-            user={user}
-            movie={activeMovie}
-            socket={socket}
-            online={online}
-            notify={notify}
-            onOpenAuth={() => openAuth('login')}
-            onBack={() => setView('portal')}
-            onSuccess={handleBookingSuccess}
-          />
-        )}
-
-        {/* VIEW 4: Booking Confirmed & Real QR Code */}
-        {view === 'confirmed' && (
-          <BookingConfirmedModal
-            booking={lastConfirmedBooking}
-            movie={activeMovie}
-            onClose={() => setView('portal')}
-            onViewAllBookings={() => setView('mine')}
-          />
-        )}
-
-        {/* VIEW 5: My Bookings Passes */}
-        {view === 'mine' && (
-          <MyBookingsView
-            movie={activeMovie}
-            notify={notify}
-            onGoBook={() => setView('book')}
-          />
-        )}
-
-        {/* VIEW 6: Unified Admin Dashboard */}
-        {view === 'admin' && isStaff && (
+        {isStaff ? (
           <AdminDashboardView
             user={user}
             socket={socket}
@@ -419,11 +385,66 @@ export default function App() {
             onAddUpcoming={(m) => setUpcomingList((prev) => [m, ...prev])}
             notify={notify}
           />
+        ) : (
+          <>
+            {/* VIEW 1: Portal Landing Page */}
+            {view === 'portal' && (
+              <PortalView
+                movie={activeMovie}
+                upcoming={upcomingList}
+                onBook={handleBookCurrentShow}
+                onSelectMovie={handleViewMovieDetails}
+                onSelectUpcoming={handleSelectUpcoming}
+              />
+            )}
+
+            {/* VIEW 2: Movie Details Page (Current Show) */}
+            {view === 'movie-details' && (
+              <MovieDetailsView
+                movie={activeMovie}
+                onBook={handleBookCurrentShow}
+                onBack={() => setView('portal')}
+              />
+            )}
+
+            {/* VIEW 3: Seat Selection Theatre Map with Phase 4 Payments & Coupons */}
+            {view === 'book' && (
+              <TheatreSeatSelection
+                user={user}
+                movie={activeMovie}
+                socket={socket}
+                online={online}
+                notify={notify}
+                onOpenAuth={() => openAuth('login')}
+                onBack={() => setView('portal')}
+                onSuccess={handleBookingSuccess}
+              />
+            )}
+
+            {/* VIEW 4: Booking Confirmed & Real QR Code */}
+            {view === 'confirmed' && (
+              <BookingConfirmedModal
+                booking={lastConfirmedBooking}
+                movie={activeMovie}
+                onClose={() => setView('portal')}
+                onViewAllBookings={() => setView('mine')}
+              />
+            )}
+
+            {/* VIEW 5: My Bookings Passes */}
+            {view === 'mine' && (
+              <MyBookingsView
+                movie={activeMovie}
+                notify={notify}
+                onGoBook={() => setView('book')}
+              />
+            )}
+          </>
         )}
       </main>
 
-      {/* Upcoming Show Notice Modal */}
-      {upcomingModalMovie && (
+      {/* Upcoming Show Notice Modal (Customers Only) */}
+      {!isStaff && upcomingModalMovie && (
         <UpcomingShowModal
           upcomingMovie={upcomingModalMovie}
           currentMovie={activeMovie}
@@ -432,22 +453,24 @@ export default function App() {
         />
       )}
 
-      {/* Trust & Legal Footer */}
-      <footer style={{ borderTop: '1px solid var(--line)', background: '#ffffff', padding: '36px 24px 28px', marginTop: 50, textAlign: 'center' }}>
-        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 24, flexWrap: 'wrap', marginBottom: 14, fontSize: 13 }}>
-            <button className="cat-item" onClick={() => setTrustPolicy('terms')}>Terms of Service</button>
-            <button className="cat-item" onClick={() => setTrustPolicy('privacy')}>Privacy Policy</button>
-            <button className="cat-item" onClick={() => setTrustPolicy('refund')}>Cancellation & Refund Policy</button>
-            <button className="cat-item" onClick={() => setTrustPolicy('licensing')}>Exhibitor Licensing Notice</button>
-            <button className="cat-item" onClick={() => setTrustPolicy('contact')}>Contact & Grievance</button>
+      {/* Trust & Legal Footer (Customers Only) */}
+      {!isStaff && (
+        <footer style={{ borderTop: '1px solid var(--line)', background: '#ffffff', padding: '36px 24px 28px', marginTop: 50, textAlign: 'center' }}>
+          <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 24, flexWrap: 'wrap', marginBottom: 14, fontSize: 13 }}>
+              <button className="cat-item" onClick={() => setTrustPolicy('terms')}>Terms of Service</button>
+              <button className="cat-item" onClick={() => setTrustPolicy('privacy')}>Privacy Policy</button>
+              <button className="cat-item" onClick={() => setTrustPolicy('refund')}>Cancellation & Refund Policy</button>
+              <button className="cat-item" onClick={() => setTrustPolicy('licensing')}>Exhibitor Licensing Notice</button>
+              <button className="cat-item" onClick={() => setTrustPolicy('contact')}>Contact & Grievance</button>
+            </div>
+            <p style={{ color: 'var(--mute)', fontSize: 12, lineHeight: 1.6, maxWidth: 740, margin: '0 auto' }}>
+              © 2026 TheTicketRoom Cinema Technologies Pvt. Ltd. All rights reserved. GSTIN: 27AABCT1234F1Z8.
+              Commercial ticketing requires direct exhibitor agreements, CBFC licensed content, and compliance with statutory refund regulations.
+            </p>
           </div>
-          <p style={{ color: 'var(--mute)', fontSize: 12, lineHeight: 1.6, maxWidth: 740, margin: '0 auto' }}>
-            © 2026 TheTicketRoom Cinema Technologies Pvt. Ltd. All rights reserved. GSTIN: 27AABCT1234F1Z8.
-            Commercial ticketing requires direct exhibitor agreements, CBFC licensed content, and compliance with statutory refund regulations.
-          </p>
-        </div>
-      </footer>
+        </footer>
+      )}
 
       {/* Trust Policy Modal */}
       {trustPolicy && (
@@ -1701,43 +1724,6 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
     }
   };
 
-  // Support Admin Cancel with mandatory audit reason
-  const handleSupportCancel = async (bookingId) => {
-    const reason = window.prompt('Enter mandatory cancellation reason for audit log:');
-    if (!reason || !reason.trim()) return notify('Cancellation aborted: reason is required', 'warn');
-    setBusy(true);
-    try {
-      await api(`/admin/bookings/${bookingId}/cancel`, {
-        method: 'POST',
-        body: { reason: reason.trim() },
-      });
-      notify('Booking cancelled and refund issued via support', 'ok');
-      loadSupportBookings(searchQ);
-      loadStats();
-    } catch (err) {
-      notify(err.message, 'err');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Suspend/Unsuspend user
-  const handleToggleSuspendUser = async (u) => {
-    setBusy(true);
-    try {
-      await api(`/admin/users/${u.id}/suspend`, {
-        method: 'PUT',
-        body: { suspended: !u.is_suspended, reason: 'Abuse protection / policy violation' },
-      });
-      notify(`User ${u.email} ${!u.is_suspended ? 'suspended' : 're-activated'}`, 'ok');
-      loadAudit();
-    } catch (err) {
-      notify(err.message, 'err');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const renderChangeDateTimeCard = () => (
     <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
       <div style={{ marginBottom: 16 }}>
@@ -1943,7 +1929,7 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
 
       {/* KPI Stats Summary */}
       {s && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14, marginBottom: 24 }}>
           <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
             <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--mint)' }}>{s.available}</div>
             <div style={{ fontSize: 12, color: 'var(--mute)' }}>Available Seats</div>
@@ -2302,7 +2288,7 @@ function AuthModal({ defaultMode = 'login', onClose, onAuth, notify }) {
               style={{ flex: 1, fontSize: 12, padding: '7px 8px' }}
               onClick={() => fillDemo('admin@test.com', 'Admin@123')}
             >
-              👑 Admin Console
+              👑 Admin Dashboard
             </button>
           </div>
 
