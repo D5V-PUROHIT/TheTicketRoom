@@ -189,6 +189,93 @@ app.get('/api/admin/stats', auth, adminOnly, wrap(async (req, res) => {
   res.json({ ...counts, total: 100, revenue: rev.revenue, recent });
 }));
 
+// ---------- Movie & Screenings Management ----------
+const defaultMovie = {
+  title: 'Baahubali: The Beginning',
+  date_str: 'Friday, 28 November, 2026',
+  time_str: '10:00 PM',
+  poster_url: '/baahubali.jpg',
+  synopsis: 'In ancient Mahishmati, an adventurous young man learns of his regal royal heritage and embarks on an epic quest to confront King Bhallaladeva and liberate his kingdom.',
+  genre: 'Action • Epic • Mythology • Drama',
+  language: 'Hindi, Telugu • Dolby Atmos 7.1'
+};
+
+app.get('/api/movie', wrap(async (req, res) => {
+  try {
+    const { rows: [m] } = await pool.query('SELECT * FROM screenings WHERE active = true ORDER BY id DESC LIMIT 1');
+    res.json({ movie: m || defaultMovie });
+  } catch {
+    res.json({ movie: defaultMovie });
+  }
+}));
+
+app.get('/api/admin/movies', auth, adminOnly, wrap(async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM screenings ORDER BY id DESC');
+  res.json({ movies: rows.length ? rows : [defaultMovie] });
+}));
+
+app.post('/api/admin/movies', auth, adminOnly, wrap(async (req, res) => {
+  const { title, date_str, time_str, poster_url, synopsis, genre, language, reset_hall } = req.body || {};
+  if (!title || typeof title !== 'string') throw new HttpError(400, 'VALIDATION', 'Movie title is required');
+  if (!date_str || !time_str) throw new HttpError(400, 'VALIDATION', 'Date and time are required');
+
+  await pool.query('UPDATE screenings SET active = false WHERE active = true');
+
+  const { rows: [newScreening] } = await pool.query(
+    `INSERT INTO screenings(title, date_str, time_str, poster_url, synopsis, genre, language, active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, true) RETURNING *`,
+    [
+      title.trim(),
+      date_str.trim(),
+      time_str.trim(),
+      poster_url && poster_url.trim() ? poster_url.trim() : '/baahubali.jpg',
+      synopsis ? synopsis.trim() : defaultMovie.synopsis,
+      genre ? genre.trim() : defaultMovie.genre,
+      language ? language.trim() : defaultMovie.language
+    ]
+  );
+
+  if (reset_hall) {
+    await pool.query("UPDATE seats SET status='available', held_by=NULL, hold_expires_at=NULL, booking_id=NULL");
+    await pool.query('DELETE FROM bookings');
+    if (app.locals.broadcast) {
+      const { rows: allSeats } = await pool.query('SELECT id FROM seats ORDER BY id');
+      app.locals.broadcast(allSeats.map(s => s.id));
+    }
+  }
+
+  if (app.locals.io) {
+    app.locals.io.emit('movie:update', newScreening);
+  }
+
+  res.status(201).json({ movie: newScreening });
+}));
+
+app.put('/api/admin/movies/schedule', auth, adminOnly, wrap(async (req, res) => {
+  const { date_str, time_str } = req.body || {};
+  if (!date_str || !time_str) throw new HttpError(400, 'VALIDATION', 'Date and time are required');
+
+  let { rows: [updated] } = await pool.query(
+    `UPDATE screenings SET date_str = $1, time_str = $2 WHERE active = true RETURNING *`,
+    [date_str.trim(), time_str.trim()]
+  );
+
+  if (!updated) {
+    const { rows: [created] } = await pool.query(
+      `INSERT INTO screenings(title, date_str, time_str, poster_url, synopsis, genre, language, active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true) RETURNING *`,
+      [defaultMovie.title, date_str.trim(), time_str.trim(), defaultMovie.poster_url, defaultMovie.synopsis, defaultMovie.genre, defaultMovie.language]
+    );
+    updated = created;
+  }
+
+  if (app.locals.io) {
+    app.locals.io.emit('movie:update', updated);
+  }
+
+  res.json({ movie: updated });
+}));
+
 // ---------- Static client + errors ----------
 const dist = path.join(__dirname, '..', 'client', 'dist');
 if (fs.existsSync(dist)) {

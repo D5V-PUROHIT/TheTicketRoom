@@ -28,12 +28,23 @@ const inr = (n) => '₹' + n;
 const pad = (n) => String(n).padStart(2, '0');
 const rows = 'ABCDEFGHIJ'.split('');
 
+const initialMovie = {
+  title: 'Baahubali: The Beginning',
+  date_str: 'Friday, 28 November, 2026',
+  time_str: '10:00 PM',
+  poster_url: '/baahubali.jpg',
+  synopsis: 'In ancient Mahishmati, a daring young adventurer learns of his royal heritage and embarks on an epic quest to confront King Bhallaladeva and liberate his kingdom.',
+  genre: 'Action • Epic • Mythology • Drama',
+  language: 'Hindi, Telugu • Dolby Atmos 7.1'
+};
+
 export default function App() {
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || 'null'));
   const [view, setView] = useState('book'); // 'portal', 'book', 'mine', 'admin'
   const [toast, setToast] = useState(null);
   const [socket, setSocket] = useState(null);
   const [online, setOnline] = useState(1);
+  const [movie, setMovie] = useState(initialMovie);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState('login');
   const timer = useRef();
@@ -65,17 +76,32 @@ export default function App() {
     setShowAuthModal(true);
   };
 
+  // Load movie info from backend
+  const loadMovie = useCallback(() => {
+    api('/movie')
+      .then((d) => { if (d.movie) setMovie(d.movie); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadMovie();
+  }, [loadMovie]);
+
   useEffect(() => {
     if (!user) return;
     const token = localStorage.getItem('token');
     const s = io({ auth: { token } });
     s.on('presence', (count) => setOnline(count || 1));
+    s.on('movie:update', (updatedMovie) => {
+      setMovie(updatedMovie);
+      notify(`Movie schedule updated: ${updatedMovie.title}`, 'ok');
+    });
     setSocket(s);
     return () => {
       s.close();
       setSocket(null);
     };
-  }, [user]);
+  }, [user, notify]);
 
   return (
     <>
@@ -159,13 +185,17 @@ export default function App() {
       <main>
         {/* Portal Landing View */}
         {view === 'portal' && (
-          <LandingPortal onBook={() => (user ? setView('book') : openAuth('login'))} />
+          <LandingPortal
+            movie={movie}
+            onBook={() => (user ? setView('book') : openAuth('login'))}
+          />
         )}
 
         {/* Theatre Seat Map (Exact BookMyShow Match) */}
         {view === 'book' && (
           <TheatreView
             user={user}
+            movie={movie}
             socket={socket}
             notify={notify}
             logout={logout}
@@ -178,12 +208,17 @@ export default function App() {
 
         {/* My Bookings View */}
         {view === 'mine' && (
-          <MyBookings notify={notify} goBook={() => setView('book')} />
+          <MyBookings movie={movie} notify={notify} goBook={() => setView('book')} />
         )}
 
         {/* Admin Stats View */}
         {view === 'admin' && user?.role === 'admin' && (
-          <AdminDashboard socket={socket} notify={notify} />
+          <AdminDashboard
+            socket={socket}
+            movie={movie}
+            setMovie={setMovie}
+            notify={notify}
+          />
         )}
       </main>
 
@@ -211,48 +246,45 @@ export default function App() {
 /* ==========================================================
    LANDING PORTAL (BookMyShow Style)
    ========================================================== */
-function LandingPortal({ onBook }) {
+function LandingPortal({ movie, onBook }) {
   return (
     <div className="hero-portal">
       <div className="hero-banner">
-        <div className="poster-box">
-          <span className="poster-art-badge">Hall 1 Exclusive</span>
-          <div style={{ textAlign: 'center', margin: 'auto' }}>
-            <div style={{ fontSize: 52 }}>🔭</div>
-            <div style={{ color: '#ffffff', fontWeight: 700, fontSize: 16, marginTop: 12 }}>
-              Midnight at the Observatory
-            </div>
-            <div style={{ color: '#a78bfa', fontSize: 12 }}>IMAX 3D Experience</div>
-          </div>
+        <div className="poster-box" style={{ padding: 0 }}>
+          <img
+            src={movie.poster_url || '/baahubali.jpg'}
+            alt={movie.title}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
         </div>
 
         <div className="hero-content">
-          <h1 className="hero-title">Midnight at the Observatory</h1>
+          <h1 className="hero-title">{movie.title}</h1>
 
           <div className="rating-bar">
-            <span className="star-score">★ 9.4/10 <span>(48.2K Votes)</span></span>
-            <span className="tech-pill">IMAX 3D</span>
-            <span className="tech-pill">DOLBY ATMOS 7.1</span>
+            <span className="star-score">★ 9.6/10 <span>(84.5K Votes)</span></span>
             <span className="tech-pill">4K LASER</span>
+            <span className="tech-pill">DOLBY ATMOS 7.1</span>
+            <span className="tech-pill">U/A 13+</span>
           </div>
 
           <div className="hero-meta">
-            <span>2h 18m</span>
+            <span>2h 39m</span>
             <span>•</span>
-            <span>Sci-Fi, Mystery, Cosmic Drama</span>
+            <span>{movie.genre}</span>
             <span>•</span>
-            <span>English</span>
+            <span>{movie.language}</span>
             <span>•</span>
-            <span>Tonight, 10:00 PM</span>
+            <span>{movie.date_str} at {movie.time_str}</span>
           </div>
 
           <p className="hero-synopsis">
-            When an unexplained deep-space celestial pulse disrupts Earth's deep-space observatory array, a team of astronomers races against the clock before the cosmic frequency terminates at precisely 10:00 PM.
+            {movie.synopsis}
           </p>
 
           <div>
             <button className="btn-book-hero" onClick={onBook}>
-              Book Tickets
+              Book Tickets ({movie.time_str})
             </button>
           </div>
         </div>
@@ -264,15 +296,16 @@ function LandingPortal({ onBook }) {
 
       <div className="movies-grid">
         <article className="movie-card" onClick={onBook} style={{ cursor: 'pointer' }}>
-          <div className="card-media">
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 44 }}>🔭</div>
-              <div style={{ fontWeight: 700, marginTop: 8 }}>Midnight at the Observatory</div>
-            </div>
+          <div className="card-media" style={{ padding: 0 }}>
+            <img
+              src={movie.poster_url || '/baahubali.jpg'}
+              alt={movie.title}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
           </div>
           <div className="card-body">
-            <h3 className="card-title">Midnight at the Observatory</h3>
-            <p className="card-genres">Sci-Fi • Mystery</p>
+            <h3 className="card-title">{movie.title}</h3>
+            <p className="card-genres">{movie.genre}</p>
           </div>
         </article>
 
@@ -322,7 +355,7 @@ function LandingPortal({ onBook }) {
 /* ==========================================================
    THEATRE SEAT VIEW (Exact Match to User's BookMyShow Screenshot)
    ========================================================== */
-function TheatreView({ user, socket, notify, logout, online, onBack, onOpenAuth, onBookSuccess }) {
+function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOpenAuth, onBookSuccess }) {
   const [seats, setSeats] = useState({});
   const [cfg, setCfg] = useState({ maxSeats: 4, holdSeconds: 120 });
   const [busy, setBusy] = useState(false);
@@ -350,7 +383,6 @@ function TheatreView({ user, socket, notify, logout, online, onBack, onOpenAuth,
       })
       .catch((e) => {
         if (e.code === 'UNAUTHENTICATED') {
-          // If guest, load seats anyway or open auth
           api('/seats').catch(() => {});
         } else {
           notify(e.message, 'err');
@@ -502,9 +534,9 @@ function TheatreView({ user, socket, notify, logout, online, onBack, onOpenAuth,
             ❮
           </button>
           <div className="theatre-movie-meta">
-            <h2>Midnight at the Observatory - English</h2>
+            <h2>{movie.title} - Hindi</h2>
             <div className="theatre-venue-sub">
-              Galaxy Cinema: Cinemall, Mumbai | Tonight, 25 November, 2026 | 10:00 PM
+              Galaxy Cinema: Cinemall, Mumbai | {movie.date_str} | {movie.time_str}
             </div>
           </div>
         </div>
@@ -517,23 +549,11 @@ function TheatreView({ user, socket, notify, logout, online, onBack, onOpenAuth,
         </div>
       </div>
 
-      {/* Showtimes Filter Bar (Matches Screenshot) */}
+      {/* Showtimes Filter Bar: Single Selected Showtime at 10:00 PM */}
       <div className="showtimes-bar">
-        <div className="showtime-pill">
-          <span className="time">03:30 PM</span>
-          <span className="audio">DOLBY 7.1</span>
-        </div>
-        <div className="showtime-pill">
-          <span className="time">06:00 PM</span>
-          <span className="audio">DOLBY 7.1</span>
-        </div>
         <div className="showtime-pill active">
-          <span className="time">10:00 PM</span>
+          <span className="time">{movie.time_str}</span>
           <span className="audio">DOLBY ATMOS</span>
-        </div>
-        <div className="showtime-pill">
-          <span className="time">11:30 PM</span>
-          <span className="audio">DOLBY 7.1</span>
         </div>
       </div>
 
@@ -618,7 +638,7 @@ function TheatreView({ user, socket, notify, logout, online, onBack, onOpenAuth,
       <div className="bms-promo-strip">
         <span style={{ color: '#16a34a', fontWeight: 700 }}>✔</span>
         <span>YES Private Debit Card Offer: 20% instant discount applied at checkout</span>
-        <span style={{ color: '#aaa' }}>• 1/3</span>
+        <span style={{ color: '#aaa' }}>• 1/1</span>
       </div>
 
       {/* Sticky Bottom Checkout Bar (When Seats Selected) */}
@@ -727,7 +747,7 @@ function TheatreView({ user, socket, notify, logout, online, onBack, onOpenAuth,
 /* ==========================================================
    MY BOOKINGS VIEW
    ========================================================== */
-function MyBookings({ notify, goBook }) {
+function MyBookings({ movie, notify, goBook }) {
   const [list, setList] = useState(null);
 
   const load = () =>
@@ -774,8 +794,8 @@ function MyBookings({ notify, goBook }) {
           <article className="cinema-pass" key={b.id}>
             <div className="pass-header">
               <div>
-                <h3>Midnight at the Observatory</h3>
-                <span style={{ fontSize: 12, color: '#aaa' }}>Galaxy Cinema • Hall 1</span>
+                <h3>{movie.title}</h3>
+                <span style={{ fontSize: 12, color: '#aaa' }}>Galaxy Cinema • Hall 1 • {movie.date_str} {movie.time_str}</span>
               </div>
               <b style={{ color: '#fbbf24', fontSize: 16 }}>{b.reference}</b>
             </div>
@@ -813,52 +833,385 @@ function MyBookings({ notify, goBook }) {
 }
 
 /* ==========================================================
-   ADMIN DASHBOARD
+   ADMIN DASHBOARD VIEW (With Movie & Schedule Management)
    ========================================================== */
-function AdminDashboard({ socket, notify }) {
+function AdminDashboard({ socket, movie, setMovie, notify }) {
   const [s, setS] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [busy, setBusy] = useState(false);
 
-  const load = useCallback(() => {
+  // Form for changing date & time of active movie
+  const [schedForm, setSchedForm] = useState({
+    date_str: movie.date_str || 'Friday, 28 November, 2026',
+    time_str: movie.time_str || '10:00 PM',
+  });
+
+  // Form for adding a new movie
+  const [newMovieForm, setNewMovieForm] = useState({
+    title: '',
+    date_str: 'Friday, 28 November, 2026',
+    time_str: '10:00 PM',
+    poster_url: '/baahubali.jpg',
+    genre: 'Action • Epic • Mythology',
+    language: 'Hindi, Telugu • Dolby Atmos',
+    synopsis: '',
+    reset_hall: true,
+  });
+
+  const loadStats = useCallback(() => {
     api('/admin/stats').then(setS).catch((e) => notify(e.message, 'err'));
   }, [notify]);
 
+  const loadHistory = useCallback(() => {
+    api('/admin/movies').then((d) => setHistory(d.movies || [])).catch(() => {});
+  }, []);
+
   useEffect(() => {
-    load();
+    loadStats();
+    loadHistory();
     if (!socket) return;
     let t;
     const h = () => {
       clearTimeout(t);
-      t = setTimeout(load, 300);
+      t = setTimeout(loadStats, 300);
     };
     socket.on('seats:update', h);
     return () => {
       socket.off('seats:update', h);
       clearTimeout(t);
     };
-  }, [socket, load]);
+  }, [socket, loadStats, loadHistory]);
 
-  if (!s) return null;
+  // Update schedule of active movie
+  const handleUpdateSchedule = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const res = await api('/admin/movies/schedule', {
+        method: 'PUT',
+        body: schedForm,
+      });
+      setMovie(res.movie);
+      notify(`Updated schedule to ${res.movie.date_str} at ${res.movie.time_str}`, 'ok');
+      loadHistory();
+    } catch (err) {
+      notify(err.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Add new movie
+  const handleAddNewMovie = async (e) => {
+    e.preventDefault();
+    if (!newMovieForm.title.trim()) return notify('Movie title is required', 'err');
+    setBusy(true);
+    try {
+      const res = await api('/admin/movies', {
+        method: 'POST',
+        body: newMovieForm,
+      });
+      setMovie(res.movie);
+      setSchedForm({ date_str: res.movie.date_str, time_str: res.movie.time_str });
+      setNewMovieForm({
+        title: '',
+        date_str: 'Friday, 28 November, 2026',
+        time_str: '10:00 PM',
+        poster_url: '/baahubali.jpg',
+        genre: 'Action • Epic • Drama',
+        language: 'Hindi • Dolby Atmos',
+        synopsis: '',
+        reset_hall: true,
+      });
+      notify(`Active movie changed to: ${res.movie.title}!`, 'ok');
+      loadHistory();
+      loadStats();
+    } catch (err) {
+      notify(err.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="admin-wrap">
-      <h2>Auditorium Live Admin Stats</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, margin: '20px 0' }}>
-        <div style={{ padding: 18, border: '1px solid #eee', borderRadius: 8 }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: '#16a34a' }}>{s.available}</div>
-          <div style={{ fontSize: 12, color: '#666' }}>Available</div>
+      <h2>Cinema Administration & Control</h2>
+      <p style={{ color: '#666', marginBottom: 20 }}>
+        Manage screening movies, modify showtimes, and inspect live hall occupancy.
+      </p>
+
+      {/* Live Seat Stats Cards */}
+      {s && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
+          <div style={{ padding: 18, border: '1px solid #eee', borderRadius: 8, background: '#fafafa' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#16a34a' }}>{s.available}</div>
+            <div style={{ fontSize: 12, color: '#666' }}>Available Seats</div>
+          </div>
+          <div style={{ padding: 18, border: '1px solid #eee', borderRadius: 8, background: '#fafafa' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#d97706' }}>{s.held}</div>
+            <div style={{ fontSize: 12, color: '#666' }}>Held by Users (2-Min)</div>
+          </div>
+          <div style={{ padding: 18, border: '1px solid #eee', borderRadius: 8, background: '#fafafa' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#e11d48' }}>{s.booked}</div>
+            <div style={{ fontSize: 12, color: '#666' }}>Confirmed Booked</div>
+          </div>
+          <div style={{ padding: 18, border: '1px solid #eee', borderRadius: 8, background: '#fafafa' }}>
+            <div style={{ fontSize: 28, fontWeight: 800 }}>{inr(s.revenue)}</div>
+            <div style={{ fontSize: 12, color: '#666' }}>Total Hall Revenue</div>
+          </div>
         </div>
-        <div style={{ padding: 18, border: '1px solid #eee', borderRadius: 8 }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: '#d97706' }}>{s.held}</div>
-          <div style={{ fontSize: 12, color: '#666' }}>Held (2-Min Lock)</div>
+      )}
+
+      {/* Active Screening & Change Date/Time */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24, marginBottom: 28 }}>
+        {/* Current Active Movie Card */}
+        <div style={{ border: '1px solid #e0e0e0', borderRadius: 8, padding: 20, background: '#ffffff' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <h3 style={{ fontSize: 16 }}>Current Active Movie</h3>
+            <span style={{ background: '#dcfce7', color: '#15803d', padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>
+              NOW PLAYING 🟢
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: 16 }}>
+            <img
+              src={movie.poster_url || '/baahubali.jpg'}
+              alt={movie.title}
+              style={{ width: 90, height: 130, objectFit: 'cover', borderRadius: 6, border: '1px solid #ddd' }}
+            />
+            <div style={{ fontSize: 13 }}>
+              <h4 style={{ fontSize: 17, marginBottom: 4 }}>{movie.title}</h4>
+              <p style={{ color: '#555', marginBottom: 6 }}><b>Screening:</b> {movie.date_str} at {movie.time_str}</p>
+              <p style={{ color: '#666', marginBottom: 4 }}><b>Genre:</b> {movie.genre}</p>
+              <p style={{ color: '#666', marginBottom: 4 }}><b>Audio:</b> {movie.language}</p>
+              <p style={{ color: '#777', fontSize: 12, lineHeight: 1.4 }}>{movie.synopsis}</p>
+            </div>
+          </div>
         </div>
-        <div style={{ padding: 18, border: '1px solid #eee', borderRadius: 8 }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: '#e11d48' }}>{s.booked}</div>
-          <div style={{ fontSize: 12, color: '#666' }}>Booked</div>
+
+        {/* Change Date and Time Form */}
+        <div style={{ border: '1px solid #e0e0e0', borderRadius: 8, padding: 20, background: '#ffffff' }}>
+          <h3 style={{ fontSize: 16, marginBottom: 6 }}>Change Date & Time</h3>
+          <p style={{ color: '#666', fontSize: 12, marginBottom: 16 }}>
+            Update the active showtime. Pushes immediately to all live clients.
+          </p>
+
+          <form onSubmit={handleUpdateSchedule}>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                Screening Date
+              </label>
+              <input
+                type="text"
+                required
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4, fontSize: 13 }}
+                value={schedForm.date_str}
+                onChange={(e) => setSchedForm({ ...schedForm, date_str: e.target.value })}
+                placeholder="e.g. Friday, 28 November, 2026"
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                Showtime
+              </label>
+              <input
+                type="text"
+                required
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4, fontSize: 13 }}
+                value={schedForm.time_str}
+                onChange={(e) => setSchedForm({ ...schedForm, time_str: e.target.value })}
+                placeholder="e.g. 10:00 PM"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={busy}
+              style={{
+                background: 'var(--bms-green)',
+                color: '#fff',
+                padding: '10px 18px',
+                borderRadius: 4,
+                fontWeight: 700,
+                fontSize: 13,
+                width: '100%'
+              }}
+            >
+              {busy ? 'Saving...' : 'Update Showtime & Date'}
+            </button>
+          </form>
         </div>
-        <div style={{ padding: 18, border: '1px solid #eee', borderRadius: 8 }}>
-          <div style={{ fontSize: 28, fontWeight: 800 }}>{inr(s.revenue)}</div>
-          <div style={{ fontSize: 12, color: '#666' }}>Revenue</div>
-        </div>
+      </div>
+
+      {/* Add New Movie Form */}
+      <div style={{ border: '1px solid #e0e0e0', borderRadius: 8, padding: 22, background: '#ffffff', marginBottom: 28 }}>
+        <h3 style={{ fontSize: 17, marginBottom: 4 }}>Add & Launch New Movie</h3>
+        <p style={{ color: '#666', fontSize: 12.5, marginBottom: 18 }}>
+          Switch the theatre to a brand new title. Previous movie will be safely saved in movie history.
+        </p>
+
+        <form onSubmit={handleAddNewMovie}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 14 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Movie Title</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Baahubali 2: The Conclusion"
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4 }}
+                value={newMovieForm.title}
+                onChange={(e) => setNewMovieForm({ ...newMovieForm, title: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Poster URL / Path</label>
+              <input
+                type="text"
+                placeholder="/baahubali.jpg or image URL"
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4 }}
+                value={newMovieForm.poster_url}
+                onChange={(e) => setNewMovieForm({ ...newMovieForm, poster_url: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 14 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Premiere Date</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Friday, 28 November, 2026"
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4 }}
+                value={newMovieForm.date_str}
+                onChange={(e) => setNewMovieForm({ ...newMovieForm, date_str: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Showtime</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. 10:00 PM"
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4 }}
+                value={newMovieForm.time_str}
+                onChange={(e) => setNewMovieForm({ ...newMovieForm, time_str: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 14 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Genre</label>
+              <input
+                type="text"
+                placeholder="Action • Epic • Drama"
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4 }}
+                value={newMovieForm.genre}
+                onChange={(e) => setNewMovieForm({ ...newMovieForm, genre: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Audio & Language</label>
+              <input
+                type="text"
+                placeholder="Hindi • Telugu • Dolby Atmos"
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4 }}
+                value={newMovieForm.language}
+                onChange={(e) => setNewMovieForm({ ...newMovieForm, language: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Synopsis</label>
+            <textarea
+              rows={2}
+              placeholder="Brief description of the movie story..."
+              style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4, font: 'inherit', fontSize: 13 }}
+              value={newMovieForm.synopsis}
+              onChange={(e) => setNewMovieForm({ ...newMovieForm, synopsis: e.target.value })}
+            />
+          </div>
+
+          <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              id="reset-seats"
+              type="checkbox"
+              checked={newMovieForm.reset_hall}
+              onChange={(e) => setNewMovieForm({ ...newMovieForm, reset_hall: e.target.checked })}
+            />
+            <label htmlFor="reset-seats" style={{ fontSize: 13, color: '#333', cursor: 'pointer' }}>
+              Reset all 100 seats to Available for this new screening
+            </label>
+          </div>
+
+          <button
+            type="submit"
+            disabled={busy}
+            style={{
+              background: 'var(--bms-red)',
+              color: '#fff',
+              padding: '11px 24px',
+              borderRadius: 4,
+              fontWeight: 700,
+              fontSize: 14
+            }}
+          >
+            {busy ? 'Publishing Movie...' : '🚀 Set as Active Movie & Update Hall'}
+          </button>
+        </form>
+      </div>
+
+      {/* Previous Movies History */}
+      <div style={{ border: '1px solid #e0e0e0', borderRadius: 8, padding: 22, background: '#ffffff' }}>
+        <h3 style={{ fontSize: 17, marginBottom: 6 }}>Movie History & Past Screenings</h3>
+        <p style={{ color: '#666', fontSize: 12.5, marginBottom: 16 }}>
+          Track past titles screened in Hall 1.
+        </p>
+
+        {history && history.length > 0 ? (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #e0e0e0', color: '#666', textAlign: 'left' }}>
+                <th style={{ padding: '8px 10px' }}>Movie</th>
+                <th style={{ padding: '8px 10px' }}>Screening Date & Time</th>
+                <th style={{ padding: '8px 10px' }}>Genre</th>
+                <th style={{ padding: '8px 10px' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((m) => (
+                <tr key={m.id || m.title} style={{ borderBottom: '1px solid #eee' }}>
+                  <td style={{ padding: '10px' }}>
+                    <b>{m.title}</b>
+                  </td>
+                  <td style={{ padding: '10px' }}>
+                    {m.date_str} at {m.time_str}
+                  </td>
+                  <td style={{ padding: '10px', color: '#666' }}>{m.genre}</td>
+                  <td style={{ padding: '10px' }}>
+                    {m.active ? (
+                      <span style={{ background: '#dcfce7', color: '#16a34a', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                        Active
+                      </span>
+                    ) : (
+                      <span style={{ background: '#f1f5f9', color: '#64748b', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>
+                        Archived
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p style={{ color: '#888', padding: '14px 0' }}>No previous movies recorded yet.</p>
+        )}
       </div>
     </div>
   );

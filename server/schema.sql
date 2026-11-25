@@ -35,3 +35,16 @@ CREATE TABLE IF NOT EXISTS seats (
 CREATE INDEX IF NOT EXISTS seats_held_by_idx ON seats(held_by) WHERE held_by IS NOT NULL;
 CREATE INDEX IF NOT EXISTS seats_booking_idx ON seats(booking_id) WHERE booking_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS bookings_user_idx ON bookings(user_id);
+
+CREATE TABLE IF NOT EXISTS screenings (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  date_str TEXT NOT NULL,
+  time_str TEXT NOT NULL,
+  poster_url TEXT NOT NULL DEFAULT '/baahubali.jpg',
+  synopsis TEXT,
+  genre TEXT DEFAULT 'Action • Epic • Drama',
+  language TEXT DEFAULT 'Hindi (Dolby Atmos)',
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

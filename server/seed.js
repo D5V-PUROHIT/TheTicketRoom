@@ -30,6 +30,23 @@ const tier = (row) => ('AB'.includes(row) ? 350 : 'CDEF'.includes(row) ? 250 : 1
      ON CONFLICT (email) DO NOTHING`,
     [ADMIN.email, await bcrypt.hash(ADMIN.password, 10)]
   );
-  console.log('Seeded 100 seats, 500 users and 1 admin.');
+
+  // Seed default active movie: Baahubali: The Beginning
+  await pool.query('UPDATE screenings SET active = false WHERE active = true');
+  await pool.query(`
+    INSERT INTO screenings(title, date_str, time_str, poster_url, synopsis, genre, language, active)
+    VALUES (
+      'Baahubali: The Beginning',
+      'Friday, 28 November, 2026',
+      '10:00 PM',
+      '/baahubali.jpg',
+      'In ancient Mahishmati, a daring young adventurer learns of his regal royal heritage and embarks on an epic quest to confront King Bhallaladeva and liberate his kingdom.',
+      'Action • Epic • Mythology • Drama',
+      'Hindi, Telugu • Dolby Atmos 7.1',
+      true
+    )
+  `);
+
+  console.log('Seeded 100 seats, 500 users, 1 admin and Baahubali screening.');
   await pool.end();
 })().catch((e) => { console.error(e); process.exit(1); });
