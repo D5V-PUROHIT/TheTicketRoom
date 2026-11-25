@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
+import QRCode from 'qrcode';
 
 async function api(path, { method = 'GET', body, key } = {}) {
   const token = localStorage.getItem('token');
@@ -26,25 +27,80 @@ async function api(path, { method = 'GET', body, key } = {}) {
 
 const inr = (n) => '₹' + n;
 const pad = (n) => String(n).padStart(2, '0');
-const rows = 'ABCDEFGHIJ'.split('');
 
 const initialMovie = {
   title: 'Baahubali: The Beginning',
   date_str: 'Friday, 28 November, 2026',
   time_str: '10:00 PM',
-  poster_url: '/baahubali.jpg',
+  poster_url: '/posters/bahubali.jpg',
   synopsis: 'In ancient Mahishmati, a daring young adventurer learns of his royal heritage and embarks on an epic quest to confront King Bhallaladeva and liberate his kingdom.',
   genre: 'Action • Epic • Mythology • Drama',
-  language: 'Hindi, Telugu • Dolby Atmos 7.1'
+  language: 'Hindi, Telugu • Dolby Atmos 7.1',
+  duration: '2h 39m',
+  certificate: 'U/A 13+',
+  rating: '9.6',
+  votes: '84.5K',
 };
+
+const catalogueMovies = [
+  {
+    id: 'ramayana',
+    title: 'Ramayana - Hindi',
+    genre: 'Mythology • Epic • Action',
+    language: 'Hindi • Dolby Atmos 7.1',
+    rating: '9.8',
+    votes: '112K',
+    poster_url: '/poster-observatory.svg',
+    time_str: '07:30 PM',
+    date_str: 'Friday, 28 November, 2026',
+    synopsis: 'An epic adaptation of the ancient legend of courage, righteousness, and the triumph of truth.',
+  },
+  {
+    id: 'starlight',
+    title: 'Starlight Horizon',
+    genre: 'Sci-Fi • Space Adventure',
+    language: 'English, Hindi • IMAX 3D',
+    rating: '9.1',
+    votes: '62K',
+    poster_url: '/poster-starlight.svg',
+    time_str: '04:15 PM',
+    date_str: 'Saturday, 29 November, 2026',
+    synopsis: 'Deep space explorers venture beyond the solar perimeter to investigate a mysterious celestial resonance.',
+  },
+  {
+    id: 'chronos',
+    title: 'Chronicles of Chronos',
+    genre: 'Time-Travel • Mystery Thriller',
+    language: 'English • Dolby Atmos',
+    rating: '8.9',
+    votes: '48K',
+    poster_url: '/poster-chronos.svg',
+    time_str: '01:00 PM',
+    date_str: 'Sunday, 30 November, 2026',
+    synopsis: 'A temporal physicist races against paradoxes to prevent the collapse of the prime timeline.',
+  },
+  {
+    id: 'nebula',
+    title: 'Nebula Whispers',
+    genre: 'Drama • Sci-Fi • Odyssey',
+    language: 'Hindi, English • 4K Laser',
+    rating: '9.3',
+    votes: '39K',
+    poster_url: '/poster-nebula.svg',
+    time_str: '11:15 PM',
+    date_str: 'Saturday, 29 November, 2026',
+    synopsis: 'A poetic odyssey across forgotten interstellar colonies in search of human origin.',
+  },
+];
 
 export default function App() {
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || 'null'));
-  const [view, setView] = useState('book'); // 'portal', 'book', 'mine', 'admin'
+  const [view, setView] = useState('portal'); // 'portal', 'movie-details', 'book', 'confirmed', 'mine', 'admin'
+  const [selectedMovie, setSelectedMovie] = useState(initialMovie);
+  const [lastConfirmedBooking, setLastConfirmedBooking] = useState(null);
   const [toast, setToast] = useState(null);
   const [socket, setSocket] = useState(null);
   const [online, setOnline] = useState(1);
-  const [movie, setMovie] = useState(initialMovie);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState('login');
   const timer = useRef();
@@ -67,7 +123,6 @@ export default function App() {
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
     setShowAuthModal(false);
-    setView('book');
     notify(`Welcome back, ${data.user.name}!`, 'ok');
   };
 
@@ -76,147 +131,225 @@ export default function App() {
     setShowAuthModal(true);
   };
 
-  // Load movie info from backend
-  const loadMovie = useCallback(() => {
+  // Load active screening from backend
+  const loadActiveMovie = useCallback(() => {
     api('/movie')
-      .then((d) => { if (d.movie) setMovie(d.movie); })
+      .then((d) => {
+        if (d.movie) {
+          const merged = { ...initialMovie, ...d.movie };
+          setSelectedMovie(merged);
+        }
+      })
       .catch(() => {});
   }, []);
 
   useEffect(() => {
-    loadMovie();
-  }, [loadMovie]);
+    loadActiveMovie();
+  }, [loadActiveMovie]);
 
+  // Connect socket.io for real-time seat & screening updates
   useEffect(() => {
-    if (!user) return;
     const token = localStorage.getItem('token');
     const s = io({ auth: { token } });
     s.on('presence', (count) => setOnline(count || 1));
-    s.on('movie:update', (updatedMovie) => {
-      setMovie(updatedMovie);
-      notify(`Movie schedule updated: ${updatedMovie.title}`, 'ok');
+    s.on('movie:update', (updated) => {
+      setSelectedMovie((prev) => ({ ...prev, ...updated }));
+      notify(`Cinema schedule updated: ${updated.title}`, 'ok');
     });
     setSocket(s);
     return () => {
       s.close();
       setSocket(null);
     };
-  }, [user, notify]);
+  }, [notify]);
+
+  const handleBookMovie = (m) => {
+    setSelectedMovie(m);
+    setView('book');
+  };
+
+  const handleViewMovieDetails = (m) => {
+    setSelectedMovie(m);
+    setView('movie-details');
+  };
+
+  const handleBookingSuccess = (booking) => {
+    setLastConfirmedBooking(booking);
+    setView('confirmed');
+  };
 
   return (
     <>
-      {/* BMS Top Navigation (Only shown when on portal/tickets/admin) */}
-      {view !== 'book' && (
-        <header className="portal-nav">
-          <div className="portal-nav-inner">
-            <div className="brand" onClick={() => setView(user ? 'book' : 'portal')}>
-              <span>book</span><span className="dark">my</span><span>show</span>
-            </div>
+      {/* Top Banner Notice */}
+      <div className="top-notice">
+        <span>⚡</span>
+        <span>
+          <b>TheTicketRoom</b> — Live Online Cinema Reservations • Hold seats for 2 minutes with instant confirmation
+        </span>
+      </div>
 
-            <div className="search-bar">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      {/* Main Brand Navigation Bar */}
+      <header className="portal-nav">
+        <div className="portal-nav-inner">
+          <div className="brand-wrap" onClick={() => setView('portal')}>
+            <div className="brand-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="3" />
+                <path d="M7 4v16" strokeDasharray="3 3" />
+                <circle cx="15" cy="12" r="3" />
               </svg>
-              <input type="text" placeholder="Search for Movies, Events, Plays, Sports and Activities" readOnly />
+            </div>
+            <span className="brand-name">
+              TheTicket<span>Room</span>
+            </span>
+          </div>
+
+          <div className="search-bar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input
+              type="text"
+              placeholder="Search movies, halls, genres, premium experiences..."
+              readOnly
+              onClick={() => notify('Showing all screenings for Friday, 28th Nov', 'ok')}
+            />
+          </div>
+
+          <div className="nav-actions">
+            <div className="hall-pill">
+              <span>📍</span>
+              <span>Hall 1: <b>Galaxy Cinema</b></span>
             </div>
 
-            <div className="nav-actions">
-              <div className="venue-select">
-                <span>Mumbai</span>
-                <span style={{ fontSize: 10 }}>▼</span>
-              </div>
-
-              {user ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <button
-                    onClick={() => setView('book')}
-                    style={{ fontWeight: 600, fontSize: 13, color: view === 'book' ? 'var(--bms-red)' : '#444' }}
-                  >
-                    Select Seats
-                  </button>
-                  <button
-                    onClick={() => setView('mine')}
-                    style={{ fontWeight: 600, fontSize: 13, color: view === 'mine' ? 'var(--bms-red)' : '#444' }}
-                  >
-                    My Bookings
-                  </button>
-                  {user.role === 'admin' && (
-                    <button
-                      onClick={() => setView('admin')}
-                      style={{ fontWeight: 600, fontSize: 13, color: view === 'admin' ? 'var(--bms-red)' : '#444' }}
-                    >
-                      Admin
-                    </button>
-                  )}
-                  <span style={{ fontSize: 12, color: '#888' }}>Hi, {user.name.split(' ')[0]}</span>
-                  <button onClick={logout} style={{ fontSize: 12, color: '#e11d48' }}>Sign out</button>
-                </div>
-              ) : (
-                <button className="btn-bms-signin" onClick={() => openAuth('login')}>
-                  Sign In
+            {user ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button
+                  className={view === 'book' ? 'btn-primary' : 'btn-ghost'}
+                  onClick={() => setView('book')}
+                >
+                  Select Seats
                 </button>
-              )}
+                <button
+                  className={view === 'mine' ? 'btn-primary' : 'btn-ghost'}
+                  onClick={() => setView('mine')}
+                >
+                  My Bookings
+                </button>
+                {user.role === 'admin' && (
+                  <button
+                    className={view === 'admin' ? 'btn-primary' : 'btn-ghost'}
+                    onClick={() => setView('admin')}
+                  >
+                    Admin Console
+                  </button>
+                )}
+                <div className="user-badge">
+                  <span>👤</span>
+                  <span>{user.name.split(' ')[0]}</span>
+                </div>
+                <button className="btn-signout" onClick={logout}>
+                  Sign out
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="btn-ghost" onClick={() => openAuth('login')}>
+                  Sign in
+                </button>
+                <button className="btn-primary" onClick={() => openAuth('register')}>
+                  Register
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Secondary Category Bar */}
+        <div className="cat-bar">
+          <div className="cat-bar-inner">
+            <div className="cat-nav-group">
+              <span className={`cat-item ${view === 'portal' ? 'active' : ''}`} onClick={() => setView('portal')}>
+                Movies
+              </span>
+              <span className="cat-item" onClick={() => setView('book')}>
+                Live Hall 1
+              </span>
+              <span className="cat-item" onClick={() => notify('Dolby Atmos 7.1 Laser Projection Active', 'ok')}>
+                Experiences
+              </span>
+              <span className="cat-item" onClick={() => notify('YES Bank & HDFC 20% Discount available at checkout', 'ok')}>
+                Offers
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 16, fontSize: 12.5 }}>
+              <span style={{ color: 'var(--mint)', fontWeight: 700 }}>● {online} active booking now</span>
             </div>
           </div>
+        </div>
+      </header>
 
-          <div className="cat-bar">
-            <div className="cat-bar-inner">
-              <div className="cat-left">
-                <span className="cat-item active" onClick={() => setView(user ? 'book' : 'portal')}>Movies</span>
-                <span className="cat-item">Stream</span>
-                <span className="cat-item">Events</span>
-                <span className="cat-item">Plays</span>
-                <span className="cat-item">Sports</span>
-                <span className="cat-item">Activities</span>
-              </div>
-              <div style={{ display: 'flex', gap: 16 }}>
-                <span className="cat-item">ListYourShow</span>
-                <span className="cat-item">Corporates</span>
-                <span className="cat-item">Offers</span>
-                <span className="cat-item">Gift Cards</span>
-              </div>
-            </div>
-          </div>
-        </header>
-      )}
-
-      {/* Main App Body */}
+      {/* Main Application Body */}
       <main>
-        {/* Portal Landing View */}
+        {/* VIEW 1: Portal Landing Page */}
         {view === 'portal' && (
-          <LandingPortal
-            movie={movie}
-            onBook={() => (user ? setView('book') : openAuth('login'))}
+          <PortalView
+            movie={selectedMovie}
+            catalogue={catalogueMovies}
+            onBook={() => handleBookMovie(selectedMovie)}
+            onSelectMovie={handleViewMovieDetails}
           />
         )}
 
-        {/* Theatre Seat Map (Exact BookMyShow Match) */}
+        {/* VIEW 2: Movie Details Page */}
+        {view === 'movie-details' && (
+          <MovieDetailsView
+            movie={selectedMovie}
+            onBook={() => handleBookMovie(selectedMovie)}
+            onBack={() => setView('portal')}
+          />
+        )}
+
+        {/* VIEW 3: Seat Selection Theatre Map */}
         {view === 'book' && (
-          <TheatreView
+          <TheatreSeatSelection
             user={user}
-            movie={movie}
+            movie={selectedMovie}
             socket={socket}
-            notify={notify}
-            logout={logout}
             online={online}
-            onBack={() => setView(user ? 'mine' : 'portal')}
+            notify={notify}
             onOpenAuth={() => openAuth('login')}
-            onBookSuccess={() => setView('mine')}
+            onBack={() => setView('portal')}
+            onSuccess={handleBookingSuccess}
           />
         )}
 
-        {/* My Bookings View */}
-        {view === 'mine' && (
-          <MyBookings movie={movie} notify={notify} goBook={() => setView('book')} />
+        {/* VIEW 4: Booking Confirmed & Real QR Code */}
+        {view === 'confirmed' && (
+          <BookingConfirmedModal
+            booking={lastConfirmedBooking}
+            movie={selectedMovie}
+            onClose={() => setView('portal')}
+            onViewAllBookings={() => setView('mine')}
+          />
         )}
 
-        {/* Admin Stats View */}
+        {/* VIEW 5: My Bookings Passes */}
+        {view === 'mine' && (
+          <MyBookingsView
+            movie={selectedMovie}
+            notify={notify}
+            onGoBook={() => setView('book')}
+          />
+        )}
+
+        {/* VIEW 6: Admin Dashboard */}
         {view === 'admin' && user?.role === 'admin' && (
-          <AdminDashboard
+          <AdminDashboardView
             socket={socket}
-            movie={movie}
-            setMovie={setMovie}
+            movie={selectedMovie}
+            setMovie={setSelectedMovie}
             notify={notify}
           />
         )}
@@ -232,10 +365,10 @@ export default function App() {
         />
       )}
 
-      {/* Toast Alert */}
+      {/* Real-time Toast Alerts */}
       {toast && (
         <div className={`toast-bar ${toast.type}`} role="status">
-          <span>{toast.type === 'ok' ? '✓' : '⚠️'}</span>
+          <span>{toast.type === 'ok' ? '✓' : toast.type === 'warn' ? '⚠️' : '✕'}</span>
           <span>{toast.msg}</span>
         </div>
       )}
@@ -244,118 +377,255 @@ export default function App() {
 }
 
 /* ==========================================================
-   LANDING PORTAL (BookMyShow Style)
+   VIEW 1: PORTAL LANDING VIEW
    ========================================================== */
-function LandingPortal({ movie, onBook }) {
+function PortalView({ movie, catalogue, onBook, onSelectMovie }) {
   return (
     <div className="hero-portal">
-      <div className="hero-banner">
-        <div className="poster-box" style={{ padding: 0 }}>
+      {/* Featured Screening Hero */}
+      <section className="hero-banner">
+        <div className="poster-box">
           <img
-            src={movie.poster_url || '/baahubali.jpg'}
+            src={movie.poster_url || '/posters/bahubali.jpg'}
             alt={movie.title}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={(e) => { e.target.src = '/posters/bahubali.jpg'; }}
           />
         </div>
 
         <div className="hero-content">
-          <h1 className="hero-title">{movie.title}</h1>
-
-          <div className="rating-bar">
-            <span className="star-score">★ 9.6/10 <span>(84.5K Votes)</span></span>
-            <span className="tech-pill">4K LASER</span>
-            <span className="tech-pill">DOLBY ATMOS 7.1</span>
-            <span className="tech-pill">U/A 13+</span>
+          <div className="premiere-pill">
+            <span className="live-pulse-dot"></span>
+            <span>TONIGHT'S PREMIERE SHOW • HALL 1</span>
           </div>
 
-          <div className="hero-meta">
-            <span>2h 39m</span>
+          <h1 className="hero-title">{movie.title}</h1>
+
+          <div className="chips-row">
+            <div className="score-chip">
+              <span>★</span>
+              <b>{movie.rating || '9.6'}/10</b>
+              <span>({movie.votes || '84K'} votes)</span>
+            </div>
+            <span className="meta-chip">4K LASER</span>
+            <span className="meta-chip">DOLBY ATMOS 7.1</span>
+            <span className="meta-chip">{movie.certificate || 'U/A 13+'}</span>
+          </div>
+
+          <div className="hero-meta-line">
+            <span>⏱ {movie.duration || '2h 39m'}</span>
             <span>•</span>
-            <span>{movie.genre}</span>
+            <span>🎭 {movie.genre}</span>
             <span>•</span>
-            <span>{movie.language}</span>
+            <span>🗣 {movie.language}</span>
             <span>•</span>
-            <span>{movie.date_str} at {movie.time_str}</span>
+            <span>🗓 <b>{movie.date_str} at {movie.time_str}</b></span>
           </div>
 
           <p className="hero-synopsis">
             {movie.synopsis}
           </p>
 
-          <div>
-            <button className="btn-book-hero" onClick={onBook}>
-              Book Tickets ({movie.time_str})
+          <div className="hero-ctas">
+            <button className="btn-hero-book" onClick={onBook}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <path d="M7 4v16" strokeDasharray="2 2" />
+              </svg>
+              <span>Book Tickets ({movie.time_str})</span>
+            </button>
+            <button className="btn-ghost" style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.25)' }} onClick={() => onSelectMovie(movie)}>
+              View Full Story & Cast →
             </button>
           </div>
         </div>
+      </section>
+
+      {/* Recommended Movies Section */}
+      <div style={{ margin: '36px 0 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ fontSize: 22 }}>Recommended Screenings & Upcoming Releases</h2>
+        <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600, cursor: 'pointer' }}>
+          Explore all titles →
+        </span>
       </div>
 
-      <div className="section-header">
-        <h2>Recommended Movies</h2>
-      </div>
-
-      <div className="movies-grid">
-        <article className="movie-card" onClick={onBook} style={{ cursor: 'pointer' }}>
-          <div className="card-media" style={{ padding: 0 }}>
+      <div className="movies-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 20 }}>
+        {/* Active Movie Card */}
+        <article
+          className="movie-card"
+          onClick={() => onSelectMovie(movie)}
+          style={{
+            cursor: 'pointer',
+            background: '#fff',
+            borderRadius: 14,
+            border: '1px solid var(--line)',
+            overflow: 'hidden',
+            boxShadow: 'var(--shadow-sm)',
+            transition: 'transform 0.2s, box-shadow 0.2s',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
+        >
+          <div style={{ position: 'relative', height: 320, background: '#1c1917' }}>
             <img
-              src={movie.poster_url || '/baahubali.jpg'}
+              src={movie.poster_url || '/posters/bahubali.jpg'}
               alt={movie.title}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={(e) => { e.target.src = '/posters/bahubali.jpg'; }}
             />
+            <span style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(0,0,0,0.75)', color: '#fbbf24', padding: '3px 8px', borderRadius: 4, fontSize: 12, fontWeight: 700 }}>
+              ★ {movie.rating || '9.6'}/10
+            </span>
           </div>
-          <div className="card-body">
-            <h3 className="card-title">{movie.title}</h3>
-            <p className="card-genres">{movie.genre}</p>
-          </div>
-        </article>
-
-        <article className="movie-card">
-          <div className="card-media" style={{ background: '#1c1917' }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 44 }}>🏹</div>
-              <div style={{ fontWeight: 700, marginTop: 8 }}>Ramayana</div>
-            </div>
-          </div>
-          <div className="card-body">
-            <h3 className="card-title">Ramayana - Hindi</h3>
-            <p className="card-genres">Mythology • Action</p>
+          <div style={{ padding: '14px 16px' }}>
+            <h3 style={{ fontSize: 16, marginBottom: 4 }}>{movie.title}</h3>
+            <p style={{ fontSize: 12, color: 'var(--mute)' }}>{movie.genre}</p>
+            <p style={{ fontSize: 11.5, color: 'var(--accent)', fontWeight: 700, marginTop: 8 }}>
+              Tonight at {movie.time_str} • Hall 1
+            </p>
           </div>
         </article>
 
-        <article className="movie-card">
-          <div className="card-media" style={{ background: '#172554' }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 44 }}>🚀</div>
-              <div style={{ fontWeight: 700, marginTop: 8 }}>Starlight Horizon</div>
+        {/* Catalogue Movies */}
+        {catalogue.map((item) => (
+          <article
+            key={item.id}
+            className="movie-card"
+            onClick={() => onSelectMovie(item)}
+            style={{
+              cursor: 'pointer',
+              background: '#fff',
+              borderRadius: 14,
+              border: '1px solid var(--line)',
+              overflow: 'hidden',
+              boxShadow: 'var(--shadow-sm)',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
+          >
+            <div style={{ position: 'relative', height: 320, background: '#172554' }}>
+              <img
+                src={item.poster_url}
+                alt={item.title}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              <span style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(0,0,0,0.75)', color: '#fbbf24', padding: '3px 8px', borderRadius: 4, fontSize: 12, fontWeight: 700 }}>
+                ★ {item.rating}/10
+              </span>
             </div>
-          </div>
-          <div className="card-body">
-            <h3 className="card-title">Starlight Horizon</h3>
-            <p className="card-genres">Sci-Fi • Adventure</p>
-          </div>
-        </article>
-
-        <article className="movie-card">
-          <div className="card-media" style={{ background: '#3b0764' }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 44 }}>⏳</div>
-              <div style={{ fontWeight: 700, marginTop: 8 }}>Chronicles of Chronos</div>
+            <div style={{ padding: '14px 16px' }}>
+              <h3 style={{ fontSize: 16, marginBottom: 4 }}>{item.title}</h3>
+              <p style={{ fontSize: 12, color: 'var(--mute)' }}>{item.genre}</p>
+              <p style={{ fontSize: 11.5, color: '#64748b', fontWeight: 600, marginTop: 8 }}>
+                {item.date_str}
+              </p>
             </div>
-          </div>
-          <div className="card-body">
-            <h3 className="card-title">Chronicles of Chronos</h3>
-            <p className="card-genres">Thriller • Mystery</p>
-          </div>
-        </article>
+          </article>
+        ))}
       </div>
     </div>
   );
 }
 
 /* ==========================================================
-   THEATRE SEAT VIEW (Exact Match to User's BookMyShow Screenshot)
+   VIEW 2: MOVIE DETAILS VIEW
    ========================================================== */
-function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOpenAuth, onBookSuccess }) {
+function MovieDetailsView({ movie, onBook, onBack }) {
+  const castList = [
+    { name: 'Prabhas', role: 'Amarendra & Mahendra Baahubali', icon: '👑' },
+    { name: 'Rana Daggubati', role: 'King Bhallaladeva', icon: '⚔️' },
+    { name: 'Anushka Shetty', role: 'Devasena', icon: '🏹' },
+    { name: 'S.S. Rajamouli', role: 'Director & Visionary', icon: '🎬' },
+  ];
+
+  return (
+    <div className="movie-details-wrap">
+      <button className="btn-ghost" onClick={onBack} style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span>❮</span>
+        <span>Back to Movies</span>
+      </button>
+
+      <div className="details-hero-card">
+        <div className="poster-box" style={{ height: 380 }}>
+          <img
+            src={movie.poster_url || '/posters/bahubali.jpg'}
+            alt={movie.title}
+            onError={(e) => { e.target.src = '/posters/bahubali.jpg'; }}
+          />
+        </div>
+
+        <div>
+          <div className="chips-row">
+            <span className="score-chip">★ {movie.rating || '9.6'}/10</span>
+            <span className="meta-chip">{movie.certificate || 'U/A 13+'}</span>
+            <span className="meta-chip">4K LASER</span>
+            <span className="meta-chip">DOLBY ATMOS 7.1</span>
+          </div>
+
+          <h1 style={{ fontSize: 34, marginBottom: 8 }}>{movie.title}</h1>
+          <p style={{ color: 'var(--mute)', fontSize: 14, marginBottom: 16 }}>
+            {movie.duration || '2h 39m'} • {movie.genre} • {movie.language}
+          </p>
+
+          <p style={{ fontSize: 14.5, lineHeight: 1.65, color: '#444', marginBottom: 20 }}>
+            {movie.synopsis}
+          </p>
+
+          {/* Tonight's Featured Screening Card */}
+          <div className="show-card-featured">
+            <div className="show-time-badge">
+              <div className="show-time-box">{movie.time_str || '10:00 PM'}</div>
+              <div className="show-hall-desc">
+                <b>Galaxy Cinema • Hall 1</b>
+                <span>{movie.date_str || 'Friday, 28 November, 2026'} • Dolby Atmos 7.1</span>
+              </div>
+            </div>
+
+            <button className="btn-primary" style={{ padding: '12px 28px', fontSize: 15 }} onClick={onBook}>
+              Book Tickets ({movie.time_str || '10:00 PM'})
+            </button>
+          </div>
+
+          {/* Seat Tiers Pricing Card */}
+          <div className="tiers-pricing-bar">
+            <div className="tier-price-box rec">
+              <h5>RECLINER (Row A)</h5>
+              <b>{inr(350)}</b>
+              <div style={{ fontSize: 11, color: 'var(--mute)', marginTop: 4 }}>VIP Reclining Loungers</div>
+            </div>
+            <div className="tier-price-box clb">
+              <h5>CLUB (Rows B-F)</h5>
+              <b>{inr(250)}</b>
+              <div style={{ fontSize: 11, color: 'var(--mute)', marginTop: 4 }}>Optimal Center Viewing</div>
+            </div>
+            <div className="tier-price-box prm">
+              <h5>PREMIUM (Rows G-J)</h5>
+              <b>{inr(180)}</b>
+              <div style={{ fontSize: 11, color: 'var(--mute)', marginTop: 4 }}>Standard Auditorium View</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Cast & Crew Section */}
+      <h3 style={{ fontSize: 20, marginBottom: 14 }}>Cast & Key Crew</h3>
+      <div className="cast-grid">
+        {castList.map((c) => (
+          <div className="cast-card" key={c.name}>
+            <div className="cast-avatar">{c.icon}</div>
+            <b>{c.name}</b>
+            <span>{c.role}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ==========================================================
+   VIEW 3: THEATRE SEAT SELECTION
+   ========================================================== */
+function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth, onBack, onSuccess }) {
   const [seats, setSeats] = useState({});
   const [cfg, setCfg] = useState({ maxSeats: 4, holdSeconds: 120 });
   const [busy, setBusy] = useState(false);
@@ -383,6 +653,7 @@ function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOp
       })
       .catch((e) => {
         if (e.code === 'UNAUTHENTICATED') {
+          // If unauthenticated, public preview can still load if backend allows or retry
           api('/seats').catch(() => {});
         } else {
           notify(e.message, 'err');
@@ -414,14 +685,14 @@ function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOp
   useEffect(() => {
     if (mine.length > 0 && left === 0) {
       load();
-      notify('Hold timed out. Please reselect your seats.', 'warn');
+      notify('Your 2-minute hold has expired. Please choose your seats again.', 'warn');
     }
   }, [left, mine.length, load, notify]);
 
-  // 30-second expiry warning toast
+  // 30-second warning toast
   useEffect(() => {
     if (mine.length > 0 && left <= 30 && left > 0 && !warned30s) {
-      notify(`⚠️ Hold expiring in ${left}s! Complete your booking now.`, 'warn');
+      notify(`⚠️ Hold expiring in ${left}s! Complete your checkout now.`, 'warn');
       setWarned30s(true);
     }
     if (left > 30 || mine.length === 0) {
@@ -440,7 +711,7 @@ function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOp
     const ids = mine.map((m) => m.id);
     const next = ids.includes(s.id) ? ids.filter((i) => i !== s.id) : [...ids, s.id];
     if (next.length > cfg.maxSeats) {
-      return notify(`Maximum ${cfg.maxSeats} seats allowed per user`, 'err');
+      return notify(`Maximum ${cfg.maxSeats} seats allowed per customer`, 'err');
     }
     setBusy(true);
     try {
@@ -454,8 +725,8 @@ function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOp
     }
   };
 
-  // Quick Pick Best Contiguous Available Seats
-  const quickSelect = async (groupSize) => {
+  // Best Available Seats for N People Suggester
+  const quickPickSeats = async (n) => {
     if (!user) {
       onOpenAuth();
       return;
@@ -466,8 +737,8 @@ function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOp
 
     for (const r of priorityRows) {
       const rowSeats = all.filter((s) => s.row_label === r).sort((a, b) => a.seat_number - b.seat_number);
-      for (let i = 0; i <= rowSeats.length - groupSize; i++) {
-        const slice = rowSeats.slice(i, i + groupSize);
+      for (let i = 0; i <= rowSeats.length - n; i++) {
+        const slice = rowSeats.slice(i, i + n);
         const free = slice.every((s) => s.status === 'available' || (s.status === 'held' && s.held_by === user.id));
         if (free) {
           chosen = slice.map((s) => s.id);
@@ -478,14 +749,14 @@ function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOp
     }
 
     if (!chosen) {
-      return notify(`Could not find ${groupSize} seats together`, 'warn');
+      return notify(`Could not find ${n} adjacent available seats`, 'warn');
     }
 
     setBusy(true);
     try {
       const res = await api('/holds', { method: 'POST', body: { seatIds: chosen } });
       merge(res.seats);
-      notify(`Selected ${groupSize} best seats!`, 'ok');
+      notify(`Selected ${n} best contiguous seats!`, 'ok');
     } catch (e) {
       notify(e.message, 'err');
       load();
@@ -494,14 +765,14 @@ function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOp
     }
   };
 
-  const confirm = async () => {
+  const confirmBooking = async () => {
     if (!user) return onOpenAuth();
     setBusy(true);
     try {
-      await api('/bookings', { method: 'POST', key: key.current });
+      const res = await api('/bookings', { method: 'POST', key: key.current });
       key.current = crypto.randomUUID();
-      notify('Booking Confirmed! Seats reserved.', 'ok');
-      onBookSuccess();
+      notify('Booking Confirmed! Your tickets are ready.', 'ok');
+      onSuccess(res.booking);
     } catch (e) {
       if (e.code !== 'NETWORK') key.current = crypto.randomUUID();
       notify(e.message, 'err');
@@ -511,7 +782,7 @@ function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOp
     }
   };
 
-  const release = async () => {
+  const releaseSeats = async () => {
     if (!user || busy) return;
     setBusy(true);
     try {
@@ -527,50 +798,54 @@ function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOp
 
   return (
     <div className="theatre-screen-view">
-      {/* Top Bar (Matches Screenshot) */}
+      {/* Top Header Bar */}
       <div className="theatre-topbar">
         <div className="theatre-top-left">
-          <button className="btn-theatre-back" onClick={onBack} title="Back">
+          <button className="btn-theatre-back" onClick={onBack} title="Back to movie">
             ❮
           </button>
-          <div className="theatre-movie-meta">
-            <h2>{movie.title} - Hindi</h2>
-            <div className="theatre-venue-sub">
-              Galaxy Cinema: Cinemall, Mumbai | {movie.date_str} | {movie.time_str}
+          <div className="theatre-meta-title">
+            <h2>{movie.title}</h2>
+            <div className="theatre-meta-sub">
+              Galaxy Cinema: Hall 1 • {movie.date_str} • {movie.time_str}
             </div>
           </div>
         </div>
 
         <div className="theatre-top-right">
-          <div className="ticket-selector-badge">
-            <span>✏️</span>
-            <span>{mine.length > 0 ? `${mine.length} Tickets` : '4 Tickets max'}</span>
+          <div className="hall-pill">
+            <span>🎟️</span>
+            <span>{mine.length > 0 ? `${mine.length} Selected` : '4 Seats max'}</span>
           </div>
         </div>
       </div>
 
-      {/* Showtimes Filter Bar: Single Selected Showtime at 10:00 PM */}
+      {/* Showtimes Sub-bar */}
       <div className="showtimes-bar">
-        <div className="showtime-pill active">
+        <div className="showtime-pill">
           <span className="time">{movie.time_str}</span>
-          <span className="audio">DOLBY ATMOS</span>
+          <span className="audio">DOLBY ATMOS 7.1</span>
+        </div>
+        <div className="presence-pill">
+          <span className="live-pulse-dot" style={{ background: 'var(--mint)' }}></span>
+          <span><b>{online}</b> people booking now</span>
         </div>
       </div>
 
-      {/* Quick Pick Toolbar */}
-      <div className="quick-pick-row">
-        <div className="quick-pick-label">
+      {/* Quick Select Best Contiguous Seats */}
+      <div className="quick-pick-bar">
+        <div className="qp-label">
           <span>⚡</span>
           <span>Quick Select:</span>
         </div>
-        <div className="quick-pick-btns">
+        <div className="qp-btns">
           {[1, 2, 3, 4].map((n) => (
             <button
               key={n}
               type="button"
               className="btn-qp"
               disabled={busy}
-              onClick={() => quickSelect(n)}
+              onClick={() => quickPickSeats(n)}
             >
               {n === 1 ? '1 Seat' : `${n} Seats`}
             </button>
@@ -578,89 +853,86 @@ function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOp
         </div>
       </div>
 
-      {/* Auditorium Seat Map */}
+      {/* Auditorium Seating Canvas */}
       <div className="auditorium-box">
-        {/* Tier 1: ₹350 RECLINER (Row A - Top 10 Seats Full Width) */}
-        <div className="tier-header-line">
-          <span className="tier-header-title">{inr(350)} RECLINER</span>
+        {/* Curved Glowing Screen at the Top */}
+        <div className="screen-glow-container">
+          <div className="screen-curved-arc">
+            <span>SCREEN (All eyes this way)</span>
+          </div>
+          <div className="screen-light-cone"></div>
+        </div>
+
+        {/* Tier 1: ₹350 RECLINER (Row A - Continuous 10 VIP Seats) */}
+        <div className="tier-divider-line">
+          <span className="tier-divider-label">{inr(350)} RECLINER</span>
         </div>
         {renderRow('A')}
 
-        {/* Spacing / Aisle under top row */}
-        <div style={{ height: 18 }} />
+        <div style={{ height: 16 }}></div>
 
-        {/* Tier 2: ₹250 CLUB (Rows B through F with 2 - 6 - 2 Aisle Split) */}
-        <div className="tier-header-line">
-          <span className="tier-header-title">{inr(250)} CLUB</span>
+        {/* Tier 2: ₹250 CLUB (Rows B to F - 2 / 6 / 2 Split) */}
+        <div className="tier-divider-line">
+          <span className="tier-divider-label">{inr(250)} CLUB</span>
         </div>
         {['B', 'C', 'D', 'E', 'F'].map((r) => renderRow(r))}
 
-        {/* Tier 3: ₹180 PREMIUM (Rows G through J with 2 - 6 - 2 Aisle Split) */}
-        <div className="tier-header-line">
-          <span className="tier-header-title">{inr(180)} PREMIUM</span>
+        <div style={{ height: 16 }}></div>
+
+        {/* Tier 3: ₹180 PREMIUM (Rows G to J - 2 / 6 / 2 Split) */}
+        <div className="tier-divider-line">
+          <span className="tier-divider-label">{inr(180)} PREMIUM</span>
         </div>
         {['G', 'H', 'I', 'J'].map((r) => renderRow(r))}
 
-        {/* Screen at Bottom (Clean Screen Line like User Diagram) */}
-        <div className="bms-diagram-screen">
-          <div className="screen-bar-line" />
-          <div className="screen-bar-text">Screen</div>
+        {/* Bottom Screen Bar Line */}
+        <div className="bottom-screen-bar">
+          <div className="bottom-screen-line"></div>
+          <div className="bottom-screen-text">Screen Direction</div>
         </div>
 
-        {/* BMS Legend (Matches User's Screenshot) */}
-        <div className="bms-legend">
-          <div className="bms-legend-item">
-            <span className="bms-legend-box" />
+        {/* BMS-style Legend */}
+        <div className="theatre-legend">
+          <div className="leg-item">
+            <span className="leg-box"></span>
             <span>Available</span>
           </div>
-          <div className="bms-legend-item">
-            <span className="bms-legend-box sold" />
+          <div className="leg-item">
+            <span className="leg-box sold"></span>
             <span>Sold</span>
           </div>
-          <div className="bms-legend-item">
-            <span className="bms-legend-box held" />
-            <span>Bestseller / Held</span>
+          <div className="leg-item">
+            <span className="leg-box held"></span>
+            <span>Held (2 min)</span>
           </div>
-          <div className="bms-legend-item">
-            <span className="bms-legend-box selected" />
+          <div className="leg-item">
+            <span className="leg-box mine"></span>
             <span>Selected</span>
           </div>
         </div>
-
-        {/* Floating Zoom Buttons (Matches Screenshot) */}
-        <div className="floating-zoom">
-          <button className="btn-zoom" title="Zoom in">+</button>
-          <button className="btn-zoom" title="Zoom out">−</button>
-        </div>
       </div>
 
-      {/* Bottom Promo Strip (Matches Screenshot) */}
-      <div className="bms-promo-strip">
-        <span style={{ color: '#16a34a', fontWeight: 700 }}>✔</span>
-        <span>YES Private Debit Card Offer: 20% instant discount applied at checkout</span>
-        <span style={{ color: '#aaa' }}>• 1/1</span>
-      </div>
-
-      {/* Sticky Bottom Checkout Bar (When Seats Selected) */}
+      {/* Sticky Bottom Order Bar (Appears when seats are selected) */}
       {mine.length > 0 && (
-        <div className="bms-checkout-bar">
-          <div className="bms-checkout-inner">
-            <div className="bms-checkout-left">
-              <div className="bms-selected-seats-info">
-                <span>Selected: </span>
+        <div className="sticky-order-bar">
+          <div className="sticky-order-inner">
+            <div className="order-left-details">
+              <div className="seats-tag-summary">
+                <span>Seats: </span>
                 <b>{mine.map((s) => `${s.row_label}${pad(s.seat_number)}`).join(', ')}</b>
-                <span style={{ color: '#777', marginLeft: 8 }}>({mine.length} seats)</span>
+                <span style={{ color: 'var(--mute)', marginLeft: 8 }}>({mine.length} tickets)</span>
               </div>
-              <div className={`bms-timer-pill ${left <= 30 ? 'urgent' : ''}`}>
-                ⏳ {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')} remaining
+              <div className={`hold-timer-pill ${left <= 30 ? 'urgent' : ''}`}>
+                <span>⏳</span>
+                <span>{Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')} remaining</span>
               </div>
             </div>
 
-            <div className="bms-checkout-right">
-              <button className="btn-bms-release" onClick={release} disabled={busy}>
+            <div className="order-actions">
+              <button className="btn-ghost" onClick={releaseSeats} disabled={busy}>
                 Release
               </button>
-              <button className="btn-bms-pay" onClick={confirm} disabled={busy || left === 0}>
+              <button className="btn-pay-confirm" onClick={confirmBooking} disabled={busy || left === 0}>
                 {busy ? 'Processing...' : `Pay ${inr(total)}`}
               </button>
             </div>
@@ -673,50 +945,33 @@ function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOp
   function renderRow(r) {
     const rowSeats = all.filter((s) => s.row_label === r);
 
-    // Row A: Top 10 seats span continuously across (as in user wireframe)
+    // Row A: 10 seats contiguous across
     if (r === 'A') {
       return (
-        <div className="bms-seat-row row-a-full" key={r}>
-          <span className="bms-row-letter">{r}</span>
-          <div className="bms-seat-block full-10">
+        <div className="seat-row" key={r}>
+          <span className="row-label">{r}</span>
+          <div className="seat-block full-10">
             {rowSeats.map((s) => renderSeatBtn(s))}
           </div>
-          <span className="bms-row-letter" style={{ marginLeft: 12, marginRight: 0 }}>{r}</span>
+          <span className="row-label" style={{ marginLeft: 12, marginRight: 0 }}>{r}</span>
         </div>
       );
     }
 
-    // Rows B to J: 2 seats (Left Wing) | Aisle | 6 seats (Center Block) | Aisle | 2 seats (Right Wing)
+    // Rows B to J: 2 seats | Aisle | 6 seats | Aisle | 2 seats
     const leftBlock = rowSeats.slice(0, 2);
     const centerBlock = rowSeats.slice(2, 8);
     const rightBlock = rowSeats.slice(8, 10);
 
     return (
-      <div className="bms-seat-row" key={r}>
-        <span className="bms-row-letter">{r}</span>
-
-        {/* Left Wing (2 Seats) */}
-        <div className="bms-seat-block wing-2">
-          {leftBlock.map((s) => renderSeatBtn(s))}
-        </div>
-
-        {/* Left Aisle Gap */}
-        <div className="bms-aisle-gap" />
-
-        {/* Center Block (6 Seats) */}
-        <div className="bms-seat-block center-6">
-          {centerBlock.map((s) => renderSeatBtn(s))}
-        </div>
-
-        {/* Right Aisle Gap */}
-        <div className="bms-aisle-gap" />
-
-        {/* Right Wing (2 Seats) */}
-        <div className="bms-seat-block wing-2">
-          {rightBlock.map((s) => renderSeatBtn(s))}
-        </div>
-
-        <span className="bms-row-letter" style={{ marginLeft: 12, marginRight: 0 }}>{r}</span>
+      <div className="seat-row" key={r}>
+        <span className="row-label">{r}</span>
+        <div className="seat-block wing-2">{leftBlock.map((s) => renderSeatBtn(s))}</div>
+        <div className="aisle-gap"></div>
+        <div className="seat-block center-6">{centerBlock.map((s) => renderSeatBtn(s))}</div>
+        <div className="aisle-gap"></div>
+        <div className="seat-block wing-2">{rightBlock.map((s) => renderSeatBtn(s))}</div>
+        <span className="row-label" style={{ marginLeft: 12, marginRight: 0 }}>{r}</span>
       </div>
     );
   }
@@ -731,7 +986,7 @@ function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOp
     return (
       <button
         key={s.id}
-        id={`seat-bms-${s.id}`}
+        id={`seat-${s.id}`}
         type="button"
         className={`bms-seat ${stClass} ${isPulsing ? 'peer-pulse' : ''}`}
         disabled={isSold || isPeerHeld}
@@ -745,9 +1000,86 @@ function TheatreView({ user, movie, socket, notify, logout, online, onBack, onOp
 }
 
 /* ==========================================================
-   MY BOOKINGS VIEW
+   VIEW 4: BOOKING CONFIRMED & REAL QR CODE VIEW
    ========================================================== */
-function MyBookings({ movie, notify, goBook }) {
+function BookingConfirmedModal({ booking, movie, onClose, onViewAllBookings }) {
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
+
+  useEffect(() => {
+    if (!booking?.reference) return;
+    QRCode.toDataURL(booking.reference, {
+      width: 160,
+      margin: 1,
+      color: { dark: '#2b2742', light: '#ffffff' },
+    })
+      .then(setQrCodeUrl)
+      .catch((err) => console.error('QR code generation error', err));
+  }, [booking?.reference]);
+
+  if (!booking) return null;
+
+  return (
+    <div className="confirmed-modal-backdrop">
+      <div className="confirmed-ticket-card">
+        <div className="confirmed-header">
+          <div className="confetti-badge">🎉</div>
+          <h2>Booking Confirmed!</h2>
+          <p>Seats are reserved under your reference. Show this ticket at the cinema entry.</p>
+        </div>
+
+        <div className="confirmed-body">
+          <div className="booking-ref-display">{booking.reference}</div>
+
+          <div className="qr-code-box">
+            {qrCodeUrl ? (
+              <img src={qrCodeUrl} alt={`QR Code for ${booking.reference}`} style={{ width: 140, height: 140, display: 'block' }} />
+            ) : (
+              <div style={{ width: 140, height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888' }}>
+                Generating QR...
+              </div>
+            )}
+          </div>
+
+          <div style={{ fontSize: 14, textAlign: 'left', background: 'var(--bg)', padding: '14px 18px', borderRadius: 10, border: '1px solid var(--line)', marginBottom: 20 }}>
+            <div style={{ marginBottom: 6 }}>
+              <b>Movie: </b><span>{movie.title}</span>
+            </div>
+            <div style={{ marginBottom: 6 }}>
+              <b>Screening: </b><span>Galaxy Cinema • Hall 1 • {movie.date_str} at {movie.time_str}</span>
+            </div>
+            <div style={{ marginBottom: 6 }}>
+              <b>Seats: </b>
+              <span style={{ color: 'var(--accent)', fontWeight: 700 }}>
+                {booking.seats?.map((s) => s.label).join(', ')}
+              </span>
+            </div>
+            <div>
+              <b>Total Paid: </b>
+              <span style={{ color: 'var(--mint)', fontWeight: 800 }}>{inr(booking.total_price)}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12 }}>
+            <button className="btn-print-ticket" onClick={() => window.print()}>
+              🖨️ Print / Save Ticket
+            </button>
+            <button className="btn-ghost" style={{ flex: 1 }} onClick={onViewAllBookings}>
+              View in My Bookings
+            </button>
+            <button className="btn-ghost" onClick={onClose}>
+              ✕
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ==========================================================
+   VIEW 5: MY BOOKINGS VIEW
+   ========================================================== */
+function MyBookingsView({ movie, notify, onGoBook }) {
   const [list, setList] = useState(null);
 
   const load = () =>
@@ -760,10 +1092,10 @@ function MyBookings({ movie, notify, goBook }) {
   }, []);
 
   const cancel = async (b) => {
-    if (!window.confirm(`Cancel booking ${b.reference}? Seats will be released.`)) return;
+    if (!window.confirm(`Cancel reservation ${b.reference}? Released seats will immediately become available.`)) return;
     try {
       await api(`/bookings/${b.id}`, { method: 'DELETE' });
-      notify('Booking cancelled', 'ok');
+      notify('Booking cancelled and seats released', 'ok');
       load();
     } catch (e) {
       notify(e.message, 'err');
@@ -778,8 +1110,8 @@ function MyBookings({ movie, notify, goBook }) {
     return (
       <div className="tickets-wrap" style={{ textAlign: 'center', padding: '60px 20px' }}>
         <h2>No bookings found</h2>
-        <p style={{ color: '#777', margin: '8px 0 20px' }}>You haven't reserved any tickets yet.</p>
-        <button className="btn-bms-signin" style={{ padding: '10px 24px' }} onClick={goBook}>
+        <p style={{ color: 'var(--mute)', margin: '8px 0 20px' }}>You haven't reserved any tickets yet.</p>
+        <button className="btn-primary" onClick={onGoBook}>
           Book Seats Now
         </button>
       </div>
@@ -791,51 +1123,81 @@ function MyBookings({ movie, notify, goBook }) {
       <h2>My Confirmed Bookings ({list.length})</h2>
       <div className="tickets-grid">
         {list.map((b) => (
-          <article className="cinema-pass" key={b.id}>
-            <div className="pass-header">
-              <div>
-                <h3>{movie.title}</h3>
-                <span style={{ fontSize: 12, color: '#aaa' }}>Galaxy Cinema • Hall 1 • {movie.date_str} {movie.time_str}</span>
-              </div>
-              <b style={{ color: '#fbbf24', fontSize: 16 }}>{b.reference}</b>
-            </div>
-            <div className="pass-body">
-              <div style={{ fontSize: 13, marginBottom: 8 }}>
-                <b>Seats: </b>
-                <span>{b.seats.map((s) => s.label).join(', ')}</span>
-              </div>
-              <div style={{ fontSize: 13, marginBottom: 14 }}>
-                <b>Total Paid: </b>
-                <span style={{ color: 'var(--bms-green)', fontWeight: 700 }}>{inr(b.total_price)}</span>
-              </div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button
-                  type="button"
-                  style={{ flex: 1, padding: 8, border: '1px solid #ccc', borderRadius: 4, fontSize: 12 }}
-                  onClick={() => window.print()}
-                >
-                  🖨️ Print Ticket
-                </button>
-                <button
-                  type="button"
-                  style={{ padding: '8px 14px', border: '1px solid #f87171', color: '#dc2626', borderRadius: 4, fontSize: 12 }}
-                  onClick={() => cancel(b)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </article>
+          <TicketPassCard key={b.id} booking={b} movie={movie} onCancel={() => cancel(b)} />
         ))}
       </div>
     </div>
   );
 }
 
+function TicketPassCard({ booking, movie, onCancel }) {
+  const [qrUrl, setQrUrl] = useState('');
+
+  useEffect(() => {
+    QRCode.toDataURL(booking.reference, {
+      width: 90,
+      margin: 1,
+      color: { dark: '#2b2742', light: '#ffffff' },
+    })
+      .then(setQrUrl)
+      .catch(() => {});
+  }, [booking.reference]);
+
+  return (
+    <article className="e-pass-card">
+      <div className="e-pass-header">
+        <div>
+          <h3>{movie.title}</h3>
+          <span>Galaxy Cinema • Hall 1 • {movie.date_str} {movie.time_str}</span>
+        </div>
+        <div className="e-pass-ref">{booking.reference}</div>
+      </div>
+
+      <div className="e-pass-notch-row">
+        <div className="e-pass-dash"></div>
+      </div>
+
+      <div className="e-pass-body">
+        <div className="e-pass-info">
+          <div style={{ fontSize: 13, marginBottom: 6 }}>
+            <b>Seats: </b>
+            <span>{booking.seats?.map((s) => s.label).join(', ')}</span>
+          </div>
+          <div style={{ fontSize: 13, marginBottom: 12 }}>
+            <b>Total Paid: </b>
+            <span style={{ color: 'var(--mint)', fontWeight: 700 }}>{inr(booking.total_price)}</span>
+          </div>
+
+          <div className="e-pass-actions">
+            <button className="btn-print-ticket" onClick={() => window.print()}>
+              🖨️ Print
+            </button>
+            <button
+              className="btn-ghost"
+              style={{ padding: '6px 12px', fontSize: 12, color: '#dc2626', borderColor: '#fca5a5' }}
+              onClick={onCancel}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        <div className="e-pass-qr">
+          {qrUrl ? (
+            <img src={qrUrl} alt="Ticket QR" style={{ width: 80, height: 80, borderRadius: 6, border: '1px solid var(--line)' }} />
+          ) : (
+            <div style={{ width: 80, height: 80, background: '#eee', borderRadius: 6 }} />
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
 /* ==========================================================
-   ADMIN DASHBOARD VIEW (With Movie & Schedule Management)
+   VIEW 6: ADMIN DASHBOARD VIEW
    ========================================================== */
-function AdminDashboard({ socket, movie, setMovie, notify }) {
+function AdminDashboardView({ socket, movie, setMovie, notify }) {
   const [s, setS] = useState(null);
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -851,7 +1213,7 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
     title: '',
     date_str: 'Friday, 28 November, 2026',
     time_str: '10:00 PM',
-    poster_url: '/baahubali.jpg',
+    poster_url: '/posters/bahubali.jpg',
     genre: 'Action • Epic • Mythology',
     language: 'Hindi, Telugu • Dolby Atmos',
     synopsis: '',
@@ -917,13 +1279,13 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
         title: '',
         date_str: 'Friday, 28 November, 2026',
         time_str: '10:00 PM',
-        poster_url: '/baahubali.jpg',
+        poster_url: '/posters/bahubali.jpg',
         genre: 'Action • Epic • Drama',
         language: 'Hindi • Dolby Atmos',
         synopsis: '',
         reset_hall: true,
       });
-      notify(`Active movie changed to: ${res.movie.title}!`, 'ok');
+      notify(`Active screening changed to: ${res.movie.title}!`, 'ok');
       loadHistory();
       loadStats();
     } catch (err) {
@@ -934,50 +1296,50 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
   };
 
   return (
-    <div className="admin-wrap">
+    <div className="admin-wrap" style={{ maxWidth: 1080, margin: '30px auto', padding: '0 24px' }}>
       <h2>Cinema Administration & Control</h2>
-      <p style={{ color: '#666', marginBottom: 20 }}>
-        Manage screening movies, modify showtimes, and inspect live hall occupancy.
+      <p style={{ color: 'var(--mute)', marginBottom: 20 }}>
+        Manage screening movies, modify showtimes, inspect live hall occupancy, and view audit history.
       </p>
 
       {/* Live Seat Stats Cards */}
       {s && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
-          <div style={{ padding: 18, border: '1px solid #eee', borderRadius: 8, background: '#fafafa' }}>
-            <div style={{ fontSize: 28, fontWeight: 800, color: '#16a34a' }}>{s.available}</div>
-            <div style={{ fontSize: 12, color: '#666' }}>Available Seats</div>
+          <div style={{ padding: 18, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--mint)' }}>{s.available}</div>
+            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Available Seats</div>
           </div>
-          <div style={{ padding: 18, border: '1px solid #eee', borderRadius: 8, background: '#fafafa' }}>
-            <div style={{ fontSize: 28, fontWeight: 800, color: '#d97706' }}>{s.held}</div>
-            <div style={{ fontSize: 12, color: '#666' }}>Held by Users (2-Min)</div>
+          <div style={{ padding: 18, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--peach)' }}>{s.held}</div>
+            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Held by Users (2-Min)</div>
           </div>
-          <div style={{ padding: 18, border: '1px solid #eee', borderRadius: 8, background: '#fafafa' }}>
+          <div style={{ padding: 18, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
             <div style={{ fontSize: 28, fontWeight: 800, color: '#e11d48' }}>{s.booked}</div>
-            <div style={{ fontSize: 12, color: '#666' }}>Confirmed Booked</div>
+            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Confirmed Booked</div>
           </div>
-          <div style={{ padding: 18, border: '1px solid #eee', borderRadius: 8, background: '#fafafa' }}>
-            <div style={{ fontSize: 28, fontWeight: 800 }}>{inr(s.revenue)}</div>
-            <div style={{ fontSize: 12, color: '#666' }}>Total Hall Revenue</div>
+          <div style={{ padding: 18, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--ink)' }}>{inr(s.revenue)}</div>
+            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Total Revenue</div>
           </div>
         </div>
       )}
 
       {/* Active Screening & Change Date/Time */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24, marginBottom: 28 }}>
-        {/* Current Active Movie Card */}
-        <div style={{ border: '1px solid #e0e0e0', borderRadius: 8, padding: 20, background: '#ffffff' }}>
+        <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 20, background: '#fff' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <h3 style={{ fontSize: 16 }}>Current Active Movie</h3>
-            <span style={{ background: '#dcfce7', color: '#15803d', padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>
+            <span style={{ background: 'var(--mint-soft)', color: 'var(--mint)', padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>
               NOW PLAYING 🟢
             </span>
           </div>
 
           <div style={{ display: 'flex', gap: 16 }}>
             <img
-              src={movie.poster_url || '/baahubali.jpg'}
+              src={movie.poster_url || '/posters/bahubali.jpg'}
               alt={movie.title}
-              style={{ width: 90, height: 130, objectFit: 'cover', borderRadius: 6, border: '1px solid #ddd' }}
+              style={{ width: 90, height: 130, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--line)' }}
+              onError={(e) => { e.target.src = '/posters/bahubali.jpg'; }}
             />
             <div style={{ fontSize: 13 }}>
               <h4 style={{ fontSize: 17, marginBottom: 4 }}>{movie.title}</h4>
@@ -990,9 +1352,9 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
         </div>
 
         {/* Change Date and Time Form */}
-        <div style={{ border: '1px solid #e0e0e0', borderRadius: 8, padding: 20, background: '#ffffff' }}>
+        <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 20, background: '#fff' }}>
           <h3 style={{ fontSize: 16, marginBottom: 6 }}>Change Date & Time</h3>
-          <p style={{ color: '#666', fontSize: 12, marginBottom: 16 }}>
+          <p style={{ color: 'var(--mute)', fontSize: 12, marginBottom: 16 }}>
             Update the active showtime. Pushes immediately to all live clients.
           </p>
 
@@ -1004,7 +1366,7 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
               <input
                 type="text"
                 required
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4, fontSize: 13 }}
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13 }}
                 value={schedForm.date_str}
                 onChange={(e) => setSchedForm({ ...schedForm, date_str: e.target.value })}
                 placeholder="e.g. Friday, 28 November, 2026"
@@ -1018,7 +1380,7 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
               <input
                 type="text"
                 required
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4, fontSize: 13 }}
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13 }}
                 value={schedForm.time_str}
                 onChange={(e) => setSchedForm({ ...schedForm, time_str: e.target.value })}
                 placeholder="e.g. 10:00 PM"
@@ -1028,15 +1390,8 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
             <button
               type="submit"
               disabled={busy}
-              style={{
-                background: 'var(--bms-green)',
-                color: '#fff',
-                padding: '10px 18px',
-                borderRadius: 4,
-                fontWeight: 700,
-                fontSize: 13,
-                width: '100%'
-              }}
+              className="btn-primary"
+              style={{ width: '100%', padding: '10px' }}
             >
               {busy ? 'Saving...' : 'Update Showtime & Date'}
             </button>
@@ -1045,10 +1400,10 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
       </div>
 
       {/* Add New Movie Form */}
-      <div style={{ border: '1px solid #e0e0e0', borderRadius: 8, padding: 22, background: '#ffffff', marginBottom: 28 }}>
+      <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 22, background: '#fff', marginBottom: 28 }}>
         <h3 style={{ fontSize: 17, marginBottom: 4 }}>Add & Launch New Movie</h3>
-        <p style={{ color: '#666', fontSize: 12.5, marginBottom: 18 }}>
-          Switch the theatre to a brand new title. Previous movie will be safely saved in movie history.
+        <p style={{ color: 'var(--mute)', fontSize: 12.5, marginBottom: 18 }}>
+          Switch the theatre to a brand new title. Previous movie will be saved in movie history.
         </p>
 
         <form onSubmit={handleAddNewMovie}>
@@ -1059,7 +1414,7 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
                 type="text"
                 required
                 placeholder="e.g. Baahubali 2: The Conclusion"
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4 }}
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
                 value={newMovieForm.title}
                 onChange={(e) => setNewMovieForm({ ...newMovieForm, title: e.target.value })}
               />
@@ -1069,8 +1424,8 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
               <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Poster URL / Path</label>
               <input
                 type="text"
-                placeholder="/baahubali.jpg or image URL"
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4 }}
+                placeholder="/posters/bahubali.jpg or /poster-chronos.svg"
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
                 value={newMovieForm.poster_url}
                 onChange={(e) => setNewMovieForm({ ...newMovieForm, poster_url: e.target.value })}
               />
@@ -1084,7 +1439,7 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
                 type="text"
                 required
                 placeholder="e.g. Friday, 28 November, 2026"
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4 }}
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
                 value={newMovieForm.date_str}
                 onChange={(e) => setNewMovieForm({ ...newMovieForm, date_str: e.target.value })}
               />
@@ -1096,7 +1451,7 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
                 type="text"
                 required
                 placeholder="e.g. 10:00 PM"
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4 }}
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
                 value={newMovieForm.time_str}
                 onChange={(e) => setNewMovieForm({ ...newMovieForm, time_str: e.target.value })}
               />
@@ -1109,7 +1464,7 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
               <input
                 type="text"
                 placeholder="Action • Epic • Drama"
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4 }}
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
                 value={newMovieForm.genre}
                 onChange={(e) => setNewMovieForm({ ...newMovieForm, genre: e.target.value })}
               />
@@ -1120,7 +1475,7 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
               <input
                 type="text"
                 placeholder="Hindi • Telugu • Dolby Atmos"
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4 }}
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
                 value={newMovieForm.language}
                 onChange={(e) => setNewMovieForm({ ...newMovieForm, language: e.target.value })}
               />
@@ -1132,7 +1487,7 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
             <textarea
               rows={2}
               placeholder="Brief description of the movie story..."
-              style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4, font: 'inherit', fontSize: 13 }}
+              style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6, font: 'inherit', fontSize: 13 }}
               value={newMovieForm.synopsis}
               onChange={(e) => setNewMovieForm({ ...newMovieForm, synopsis: e.target.value })}
             />
@@ -1140,12 +1495,12 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
 
           <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
-              id="reset-seats"
+              id="reset-hall-seats"
               type="checkbox"
               checked={newMovieForm.reset_hall}
               onChange={(e) => setNewMovieForm({ ...newMovieForm, reset_hall: e.target.checked })}
             />
-            <label htmlFor="reset-seats" style={{ fontSize: 13, color: '#333', cursor: 'pointer' }}>
+            <label htmlFor="reset-hall-seats" style={{ fontSize: 13, color: 'var(--ink)', cursor: 'pointer' }}>
               Reset all 100 seats to Available for this new screening
             </label>
           </div>
@@ -1153,31 +1508,25 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
           <button
             type="submit"
             disabled={busy}
-            style={{
-              background: 'var(--bms-red)',
-              color: '#fff',
-              padding: '11px 24px',
-              borderRadius: 4,
-              fontWeight: 700,
-              fontSize: 14
-            }}
+            className="btn-primary"
+            style={{ padding: '11px 24px', fontSize: 14 }}
           >
             {busy ? 'Publishing Movie...' : '🚀 Set as Active Movie & Update Hall'}
           </button>
         </form>
       </div>
 
-      {/* Previous Movies History */}
-      <div style={{ border: '1px solid #e0e0e0', borderRadius: 8, padding: 22, background: '#ffffff' }}>
+      {/* Past Movies History */}
+      <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 22, background: '#fff' }}>
         <h3 style={{ fontSize: 17, marginBottom: 6 }}>Movie History & Past Screenings</h3>
-        <p style={{ color: '#666', fontSize: 12.5, marginBottom: 16 }}>
+        <p style={{ color: 'var(--mute)', fontSize: 12.5, marginBottom: 16 }}>
           Track past titles screened in Hall 1.
         </p>
 
         {history && history.length > 0 ? (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #e0e0e0', color: '#666', textAlign: 'left' }}>
+              <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
                 <th style={{ padding: '8px 10px' }}>Movie</th>
                 <th style={{ padding: '8px 10px' }}>Screening Date & Time</th>
                 <th style={{ padding: '8px 10px' }}>Genre</th>
@@ -1186,17 +1535,17 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
             </thead>
             <tbody>
               {history.map((m) => (
-                <tr key={m.id || m.title} style={{ borderBottom: '1px solid #eee' }}>
+                <tr key={m.id || m.title} style={{ borderBottom: '1px solid var(--line)' }}>
                   <td style={{ padding: '10px' }}>
                     <b>{m.title}</b>
                   </td>
                   <td style={{ padding: '10px' }}>
                     {m.date_str} at {m.time_str}
                   </td>
-                  <td style={{ padding: '10px', color: '#666' }}>{m.genre}</td>
+                  <td style={{ padding: '10px', color: 'var(--mute)' }}>{m.genre}</td>
                   <td style={{ padding: '10px' }}>
                     {m.active ? (
-                      <span style={{ background: '#dcfce7', color: '#16a34a', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                      <span style={{ background: 'var(--mint-soft)', color: 'var(--mint)', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
                         Active
                       </span>
                     ) : (
@@ -1210,7 +1559,7 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
             </tbody>
           </table>
         ) : (
-          <p style={{ color: '#888', padding: '14px 0' }}>No previous movies recorded yet.</p>
+          <p style={{ color: 'var(--mute)', padding: '14px 0' }}>No previous movies recorded yet.</p>
         )}
       </div>
     </div>
@@ -1218,7 +1567,7 @@ function AdminDashboard({ socket, movie, setMovie, notify }) {
 }
 
 /* ==========================================================
-   AUTH MODAL
+   AUTH MODAL (Login / Register)
    ========================================================== */
 function AuthModal({ defaultMode = 'login', onClose, onAuth, notify }) {
   const [mode, setMode] = useState(defaultMode);
@@ -1244,72 +1593,108 @@ function AuthModal({ defaultMode = 'login', onClose, onAuth, notify }) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="auth-dialog">
-        <div className="auth-header">
-          <button className="btn-close-modal" onClick={onClose}>✕</button>
-          <h3>{mode === 'login' ? 'Sign in to BookMyShow' : 'Create an Account'}</h3>
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(30, 25, 50, 0.65)',
+        backdropFilter: 'blur(6px)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        style={{
+          background: '#ffffff',
+          borderRadius: 16,
+          maxWidth: 420,
+          width: '100%',
+          boxShadow: 'var(--shadow-lg)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '20px 24px',
+            borderBottom: '1px solid var(--line)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <h3 style={{ fontSize: 18 }}>{mode === 'login' ? 'Sign In to TheTicketRoom' : 'Create an Account'}</h3>
+          <button onClick={onClose} style={{ fontSize: 18, color: 'var(--mute)' }}>✕</button>
         </div>
 
-        <div className="auth-body">
-          <div className="demo-chips">
+        <div style={{ padding: '24px' }}>
+          {/* Quick Demo Credentials */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
             <button
               type="button"
-              className="btn-demo-chip"
+              className="btn-ghost"
+              style={{ flex: 1, fontSize: 12, padding: '7px 8px' }}
               onClick={() => fillDemo('user1@test.com', 'Test@1234')}
             >
               ⚡ User 1 (Demo)
             </button>
             <button
               type="button"
-              className="btn-demo-chip"
+              className="btn-ghost"
+              style={{ flex: 1, fontSize: 12, padding: '7px 8px' }}
               onClick={() => fillDemo('admin@test.com', 'Admin@123')}
             >
-              👑 Cinema Admin
+              👑 Admin Console
             </button>
           </div>
 
           <form onSubmit={submit}>
             {mode === 'register' && (
-              <div className="auth-field">
-                <label>Full Name</label>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Full Name</label>
                 <input
                   type="text"
                   required
+                  style={{ width: '100%', padding: '9px 12px', border: '1px solid var(--line)', borderRadius: 8 }}
                   value={f.name}
                   onChange={(e) => setF({ ...f, name: e.target.value })}
                 />
               </div>
             )}
-            <div className="auth-field">
-              <label>Email Address</label>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Email Address</label>
               <input
                 type="email"
                 required
+                style={{ width: '100%', padding: '9px 12px', border: '1px solid var(--line)', borderRadius: 8 }}
                 value={f.email}
                 onChange={(e) => setF({ ...f, email: e.target.value })}
               />
             </div>
-            <div className="auth-field">
-              <label>Password</label>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Password</label>
               <input
                 type="password"
                 required
+                style={{ width: '100%', padding: '9px 12px', border: '1px solid var(--line)', borderRadius: 8 }}
                 value={f.password}
                 onChange={(e) => setF({ ...f, password: e.target.value })}
               />
             </div>
 
-            <button type="submit" className="btn-auth-submit" disabled={busy}>
-              {busy ? 'Please wait...' : mode === 'login' ? 'Continue' : 'Register & Continue'}
+            <button type="submit" className="btn-primary" style={{ width: '100%', padding: '11px', fontSize: 14 }} disabled={busy}>
+              {busy ? 'Please wait...' : mode === 'login' ? 'Sign In & Continue' : 'Register Account'}
             </button>
           </form>
 
-          <p style={{ textAlign: 'center', marginTop: 14, fontSize: 12.5, color: '#666' }}>
-            {mode === 'login' ? 'New to BookMyShow? ' : 'Already registered? '}
+          <p style={{ textAlign: 'center', marginTop: 16, fontSize: 12.5, color: 'var(--mute)' }}>
+            {mode === 'login' ? 'New here? ' : 'Already registered? '}
             <button
               type="button"
-              style={{ color: 'var(--bms-red)', fontWeight: 600 }}
+              style={{ color: 'var(--accent)', fontWeight: 700 }}
               onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
             >
               {mode === 'login' ? 'Create an account' : 'Sign in'}

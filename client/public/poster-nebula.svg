@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600" width="400" height="600">
+  <defs>
+    <linearGradient id="bgN" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#042f2e"/>
+      <stop offset="60%" stop-color="#021f1e"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="600" fill="url(#bgN)"/>
+  <ellipse cx="200" cy="220" rx="110" ry="70" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-dasharray="5,5" transform="rotate(-20 200 220)"/>
+  <circle cx="200" cy="220" r="35" fill="#5eead4" opacity="0.6"/>
+  <circle cx="200" cy="220" r="14" fill="#ffffff"/>
+  <text x="200" y="470" font-family="'Bricolage Grotesque', sans-serif" font-size="26" font-weight="800" fill="#ffffff" text-anchor="middle">NEBULA WHISPERS</text>
+  <text x="200" y="500" font-family="'DM Sans', sans-serif" font-size="12" font-weight="600" fill="#99f6e4" text-anchor="middle" letter-spacing="2">A COSMIC ODYSSEY</text>
+  <text x="200" y="540" font-family="'DM Sans', sans-serif" font-size="10.5" fill="#5eead4" text-anchor="middle">FESTIVAL SELECTION • DOLBY</text>
+</svg>

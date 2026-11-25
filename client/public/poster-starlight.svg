@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600" width="400" height="600">
+  <defs>
+    <linearGradient id="bgS" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="50%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="600" fill="url(#bgS)"/>
+  <circle cx="200" cy="220" r="100" fill="none" stroke="#38bdf8" stroke-width="2" stroke-dasharray="6,6" opacity="0.6"/>
+  <circle cx="200" cy="220" r="60" fill="#0284c7" opacity="0.8"/>
+  <polygon points="200,140 230,260 200,240 170,260" fill="#ffffff"/>
+  <text x="200" y="470" font-family="'Bricolage Grotesque', sans-serif" font-size="26" font-weight="800" fill="#ffffff" text-anchor="middle">STARLIGHT HORIZON</text>
+  <text x="200" y="500" font-family="'DM Sans', sans-serif" font-size="12" font-weight="600" fill="#7dd3fc" text-anchor="middle" letter-spacing="2">DEEP SPACE EXPLORATION</text>
+  <text x="200" y="540" font-family="'DM Sans', sans-serif" font-size="10.5" fill="#94a3b8" text-anchor="middle">COMING FRIDAY • IMAX 3D</text>
+</svg>
