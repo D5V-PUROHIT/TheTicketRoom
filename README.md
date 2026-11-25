@@ -154,7 +154,10 @@ All JSON API endpoints are prefixed with `/api`. Protected routes require a vali
 |---|---|---|---|
 | `GET` | `/api/admin/stats` | Admin | Live KPIs: available, held, booked, blocked counts, and revenue |
 | `GET` | `/api/admin/movies` | Admin | List all catalogue movies (active and archived history) |
-| `PUT` | `/api/admin/movies/schedule` | Admin / Ops | Update date and showtime for active screening; broadcasts via WebSockets |
+| `GET` | `/api/admin/shows` | Admin | List all scheduled shows with live booked, held, and available seat counts |
+| `POST` | `/api/admin/shows` | Admin / Ops | Add a new showtime (100 fresh seats) without modifying already-booked shows |
+| `PUT` | `/api/admin/shows/:id` | Admin / Ops | Update showtime or cancel unbooked show (`409` locked if `booked > 0`) |
+| `PUT` | `/api/admin/movies/schedule` | Admin / Ops | Update date/time for unbooked show (`409 SCHEDULE_LOCKED` if `booked > 0`) |
 | `POST` | `/api/admin/movies` | Admin / Ops | Add and publish a new movie to the theatre catalogue |
 | `POST` | `/api/admin/shows/:showId/block-seats`| Admin / Ops | Block/unblock physical seats for VIP guests or maintenance |
 | `GET` | `/api/admin/bookings` | Admin / Support| Search all customer reservations by reference, email, or seat number |
@@ -240,6 +243,7 @@ npm test
 - **Test 1 (200-User Race)**: 200 users race for the exact same 4 seats on Show 1. Asserts exactly 1 winner, 199 graceful 409 conflicts, 0 server errors, and verifies idempotent replays.
 - **Test 2 (300-User Random Overlap)**: 300 users pick random overlapping seats. Asserts complete disjointness across all confirmed bookings.
 - **Test 3 (Multi-Show Isolation)**: 200 users race concurrently across two distinct shows (100 on Show 1, 100 on Show 2) simultaneously. Asserts zero cross-talk, zero deadlocks, and exactly 1 winner per show.
+- **Test 4 (Strict Showtime Schedule Lock)**: Verifies edits/cancellations return `409` when `booked > 0`, adding a new showtime (`01:00 PM`) leaves booked shows untouched, and unbooked shows (`booked === 0`) can be rescheduled and cancelled.
 
 ### 2. Standalone 500-User Concurrent Load Test
 ```bash

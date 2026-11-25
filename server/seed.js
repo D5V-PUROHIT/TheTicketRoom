@@ -169,8 +169,13 @@ const priceFor = (tier) => (tier === 'recliner' ? 350 : tier === 'club' ? 250 : 
     }
   }
 
-  // Set sequence to highest seat ID so new seats get incremental IDs
-  await pool.query(`SELECT setval('show_seats_id_seq', (SELECT max(id) FROM show_seats))`);
+  // Set sequences to highest IDs so new inserts get incremental IDs cleanly
+  await pool.query(`SELECT setval('halls_id_seq', COALESCE((SELECT max(id) FROM halls), 1))`);
+  await pool.query(`SELECT setval('hall_seats_id_seq', COALESCE((SELECT max(id) FROM hall_seats), 1))`);
+  await pool.query(`SELECT setval('movies_id_seq', COALESCE((SELECT max(id) FROM movies), 1))`);
+  await pool.query(`SELECT setval('shows_id_seq', COALESCE((SELECT max(id) FROM shows), 1))`);
+  await pool.query(`SELECT setval('show_seats_id_seq', COALESCE((SELECT max(id) FROM show_seats), 1))`);
+  await pool.query(`SELECT setval('users_id_seq', COALESCE((SELECT max(id) FROM users), 1))`);
 
   // 6. Create the backward-compatible updatable view `seats` targeting Show 1
   await pool.query(`

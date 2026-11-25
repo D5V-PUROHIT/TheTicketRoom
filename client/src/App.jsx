@@ -155,6 +155,8 @@ export default function App() {
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || 'null'));
   const [view, setView] = useState(() => (isStaffRole(JSON.parse(localStorage.getItem('user') || 'null')?.role) ? 'admin' : 'portal')); // 'portal', 'movie-details', 'book', 'confirmed', 'mine', 'admin'
   const [activeMovie, setActiveMovie] = useState(initialMovie);
+  const [openShows, setOpenShows] = useState([{ id: 1, date_str: initialMovie.date_str, time_str: initialMovie.time_str, status: 'open' }]);
+  const [selectedShowId, setSelectedShowId] = useState(1);
   const [upcomingList, setUpcomingList] = useState(upcomingMovies);
   const [upcomingModalMovie, setUpcomingModalMovie] = useState(null);
   const [lastConfirmedBooking, setLastConfirmedBooking] = useState(null);
@@ -193,13 +195,21 @@ export default function App() {
     setShowAuthModal(true);
   };
 
-  // Load active screening from backend
+  // Load active screening & all open showtimes from backend
   const loadActiveMovie = useCallback(() => {
     api('/movie')
       .then((d) => {
         if (d.movie) {
           setActiveMovie({ ...initialMovie, ...d.movie });
         }
+      })
+      .catch(() => {});
+
+    api('/shows')
+      .then((d) => {
+        const onlyOpen = (d.shows || []).filter((s) => s.status === 'open');
+        setOpenShows(onlyOpen);
+        setSelectedShowId((prev) => (onlyOpen.some((s) => s.id === prev) ? prev : onlyOpen[0]?.id || null));
       })
       .catch(() => {});
   }, []);
@@ -215,14 +225,18 @@ export default function App() {
     s.on('presence', (count) => setOnline(count || 1));
     s.on('movie:update', (updated) => {
       setActiveMovie((prev) => ({ ...prev, ...updated }));
+      loadActiveMovie();
       notify(`Cinema schedule updated: ${updated.title}`, 'ok');
+    });
+    s.on('shows:update', () => {
+      loadActiveMovie();
     });
     setSocket(s);
     return () => {
       s.close();
       setSocket(null);
     };
-  }, [notify]);
+  }, [notify, loadActiveMovie]);
 
   const handleBookCurrentShow = () => {
     setUpcomingModalMovie(null);
@@ -402,6 +416,9 @@ export default function App() {
             {view === 'movie-details' && (
               <MovieDetailsView
                 movie={activeMovie}
+                openShows={openShows}
+                selectedShowId={selectedShowId}
+                onSelectShow={setSelectedShowId}
                 onBook={handleBookCurrentShow}
                 onBack={() => setView('portal')}
               />
@@ -412,6 +429,9 @@ export default function App() {
               <TheatreSeatSelection
                 user={user}
                 movie={activeMovie}
+                openShows={openShows}
+                selectedShowId={selectedShowId}
+                onSelectShow={setSelectedShowId}
                 socket={socket}
                 online={online}
                 notify={notify}
@@ -828,7 +848,8 @@ function UpcomingShowModal({ upcomingMovie, currentMovie, onBookCurrent, onClose
 /* ==========================================================
    VIEW 2: MOVIE DETAILS VIEW
    ========================================================== */
-function MovieDetailsView({ movie, onBook, onBack }) {
+function MovieDetailsView({ movie, openShows = [], selectedShowId, onSelectShow, onBook, onBack }) {
+  const currentShow = openShows.find((s) => s.id === selectedShowId) || openShows[0];
   const castList = [
     { name: 'Prabhas', role: 'Amarendra & Mahendra Baahubali', icon: '👑' },
     { name: 'Rana Daggubati', role: 'King Bhallaladeva', icon: '⚔️' },
@@ -884,19 +905,48 @@ function MovieDetailsView({ movie, onBook, onBack }) {
                 Back to Current Show
               </button>
             </div>
-          ) : (
-            <div className="show-card-featured">
-              <div className="show-time-badge">
-                <div className="show-time-box">{movie.time_str || '10:00 PM'}</div>
-                <div className="show-hall-desc">
-                  <b>Galaxy Cinema • Hall 1</b>
-                  <span>{movie.date_str || 'Friday, 27 November, 2026'} • Dolby Atmos 7.1</span>
-                </div>
+          ) : openShows.length === 0 ? (
+            <div className="show-card-featured" style={{ background: 'var(--bg)', borderColor: 'var(--line)' }}>
+              <div>
+                <b style={{ fontSize: 15, color: 'var(--ink)', display: 'block', marginBottom: 4 }}>
+                  No Open Showtimes Right Now
+                </b>
+                <span style={{ fontSize: 13, color: 'var(--mute)' }}>
+                  Showtimes have been cleared by cinema administration. Please check back shortly.
+                </span>
               </div>
+            </div>
+          ) : (
+            <div className="show-card-featured" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 14 }}>
+              {openShows.length > 1 && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--mute)' }}>Available Showtimes:</span>
+                  {openShows.map((sh) => (
+                    <button
+                      key={sh.id}
+                      type="button"
+                      className={currentShow?.id === sh.id ? 'btn-primary' : 'btn-ghost'}
+                      style={{ padding: '5px 14px', fontSize: 12.5 }}
+                      onClick={() => onSelectShow && onSelectShow(sh.id)}
+                    >
+                      {sh.time_str} ({sh.date_str.split(',')[0]})
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                <div className="show-time-badge">
+                  <div className="show-time-box">{currentShow?.time_str || movie.time_str || '10:00 PM'}</div>
+                  <div className="show-hall-desc">
+                    <b>Galaxy Cinema • Hall 1</b>
+                    <span>{currentShow?.date_str || movie.date_str || 'Friday, 27 November, 2026'} • Dolby Atmos 7.1</span>
+                  </div>
+                </div>
 
-              <button className="btn-primary" style={{ padding: '12px 28px', fontSize: 15 }} onClick={onBook}>
-                Book Tickets ({movie.time_str || '10:00 PM'})
-              </button>
+                <button className="btn-primary" style={{ padding: '12px 28px', fontSize: 15 }} onClick={onBook}>
+                  Book Tickets ({currentShow?.time_str || movie.time_str || '10:00 PM'})
+                </button>
+              </div>
             </div>
           )}
 
@@ -939,7 +989,9 @@ function MovieDetailsView({ movie, onBook, onBack }) {
 /* ==========================================================
    VIEW 3: THEATRE SEAT SELECTION & PHASE 4 CHECKOUT
    ========================================================== */
-function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth, onBack, onGoMyBookings, onSuccess }) {
+function TheatreSeatSelection({ user, movie, openShows = [], selectedShowId, onSelectShow, socket, online, notify, onOpenAuth, onBack, onGoMyBookings, onSuccess }) {
+  const activeShow = openShows.find((s) => s.id === selectedShowId) || openShows[0];
+  const activeShowId = activeShow?.id || 1;
   const [seats, setSeats] = useState({});
   const [cfg, setCfg] = useState({ maxSeats: 4, holdSeconds: 120, ownedSeatIds: [], ownedCount: 0 });
   const [busy, setBusy] = useState(false);
@@ -962,19 +1014,21 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
   }, []);
 
   const load = useCallback(() => {
-    api('/seats')
+    if (!openShows.length) return;
+    api(`/shows/${activeShowId}/seats`)
       .then((d) => {
         setSeats(Object.fromEntries(d.seats.map((s) => [s.id, s])));
         setCfg(d);
       })
       .catch((e) => {
-        if (e.code === 'UNAUTHENTICATED') {
-          api('/seats').catch(() => {});
-        } else {
-          notify(e.message, 'err');
-        }
+        notify(e.message, 'err');
       });
-  }, [notify, user?.id]);
+  }, [notify, user?.id, activeShowId, openShows.length]);
+
+  useEffect(() => {
+    setSeats({});
+    setDiscountInfo(null);
+  }, [activeShowId]);
 
   useEffect(() => {
     load();
@@ -984,13 +1038,14 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
 
   useEffect(() => {
     if (!socket) return;
-    socket.on('seats:update', merge);
+    const evt = `seats:update:${activeShowId}`;
+    socket.on(evt, merge);
     socket.on('connect', load);
     return () => {
-      socket.off('seats:update', merge);
+      socket.off(evt, merge);
       socket.off('connect', load);
     };
-  }, [socket, load, merge]);
+  }, [socket, activeShowId, load, merge]);
 
   const all = Object.values(seats).sort((a, b) => a.id - b.id);
   const mine = all.filter((s) => s.status === 'held' && s.held_by === user?.id);
@@ -1055,7 +1110,7 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
     }
     setBusy(true);
     try {
-      const res = await api('/holds', { method: 'POST', body: { seatIds: next } });
+      const res = await api(`/shows/${activeShowId}/holds`, { method: 'POST', body: { seatIds: next } });
       merge(res.seats);
     } catch (e) {
       notify(e.message, 'err');
@@ -1099,7 +1154,7 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
 
     setBusy(true);
     try {
-      const res = await api('/holds', { method: 'POST', body: { seatIds: chosen } });
+      const res = await api(`/shows/${activeShowId}/holds`, { method: 'POST', body: { seatIds: chosen } });
       merge(res.seats);
       notify(`Selected ${n} best contiguous seats!`, 'ok');
     } catch (e) {
@@ -1121,7 +1176,7 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
       });
 
       // Confirm booking with idempotency key and applied coupon
-      const res = await api('/bookings', {
+      const res = await api(`/shows/${activeShowId}/bookings`, {
         method: 'POST',
         key: key.current,
         body: { couponCode: discountInfo ? discountInfo.code : null },
@@ -1142,7 +1197,7 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
     if (!user || busy) return;
     setBusy(true);
     try {
-      const res = await api('/holds', { method: 'POST', body: { seatIds: [] } });
+      const res = await api(`/shows/${activeShowId}/holds`, { method: 'POST', body: { seatIds: [] } });
       merge(res.seats);
       setDiscountInfo(null);
       notify('Seats released', 'ok');
@@ -1152,6 +1207,17 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
       setBusy(false);
     }
   };
+
+  if (openShows.length === 0) {
+    return (
+      <div className="theatre-screen-view" style={{ padding: '80px 24px', textAlign: 'center' }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>🎬</div>
+        <h2 style={{ marginBottom: 8 }}>No Open Showtimes Scheduled</h2>
+        <p style={{ color: 'var(--mute)', marginBottom: 20 }}>Please check back later or return to the movie portal.</p>
+        <button className="btn-primary" onClick={onBack}>Back to Movies</button>
+      </div>
+    );
+  }
 
   return (
     <div className="theatre-screen-view">
@@ -1164,7 +1230,7 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
           <div className="theatre-meta-title">
             <h2>{movie.title}</h2>
             <div className="theatre-meta-sub">
-              Galaxy Cinema: Hall 1 • {movie.date_str} • {movie.time_str}
+              Galaxy Cinema: Hall 1 • {activeShow?.date_str || movie.date_str} • {activeShow?.time_str || movie.time_str}
             </div>
           </div>
         </div>
@@ -1186,9 +1252,22 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
 
       {/* Showtimes Sub-bar */}
       <div className="showtimes-bar">
-        <div className="showtime-pill">
-          <span className="time">{movie.time_str}</span>
-          <span className="audio">DOLBY ATMOS 7.1</span>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {openShows.map((sh) => {
+            const isSelectedShow = sh.id === activeShowId;
+            return (
+              <button
+                key={sh.id}
+                type="button"
+                onClick={() => onSelectShow && onSelectShow(sh.id)}
+                className={isSelectedShow ? 'showtime-pill' : 'btn-ghost'}
+                style={!isSelectedShow ? { borderRadius: 6, padding: '6px 14px', fontSize: 12.5 } : undefined}
+              >
+                <span className="time">{sh.time_str}</span>
+                {isSelectedShow && <span className="audio">DOLBY ATMOS 7.1</span>}
+              </button>
+            );
+          })}
         </div>
         <div className="presence-pill">
           <span className="live-pulse-dot" style={{ background: 'var(--mint)' }}></span>
@@ -1507,7 +1586,7 @@ function BookingConfirmedModal({ booking, movie, onClose, onViewAllBookings }) {
               <b>Movie: </b><span>{movie.title}</span>
             </div>
             <div style={{ marginBottom: 6 }}>
-              <b>Screening: </b><span>Galaxy Cinema • Hall 1 • {movie.date_str} at {movie.time_str}</span>
+              <b>Screening: </b><span>Galaxy Cinema • Hall 1 • {booking.show_date_str || movie.date_str} at {booking.show_time_str || movie.time_str}</span>
             </div>
             <div style={{ marginBottom: 6 }}>
               <b>Seats: </b>
@@ -1610,7 +1689,7 @@ function TicketPassCard({ booking, movie, onCancel }) {
       <div className="e-pass-header">
         <div>
           <h3>{movie.title}</h3>
-          <span>Galaxy Cinema • Hall 1 • {movie.date_str} {movie.time_str}</span>
+          <span>Galaxy Cinema • Hall 1 • {booking.show_date_str || movie.date_str} {booking.show_time_str || movie.time_str}</span>
         </div>
         <div className="e-pass-ref">{booking.reference}</div>
       </div>
@@ -1661,11 +1740,13 @@ function TicketPassCard({ booking, movie, onCancel }) {
    ========================================================== */
 function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, notify }) {
   const [s, setS] = useState(null);
+  const [showsList, setShowsList] = useState([]);
+  const [selectedShowId, setSelectedShowId] = useState(1);
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
   const [blockSeatIds, setBlockSeatIds] = useState('');
 
-  // Form for changing date & time of active movie
+  // Form for changing date & time of selected show (only allowed when 0 bookings exist)
   const [calDate, setCalDate] = useState(() => dateStrToIso(movie.date_str));
   const [calTime, setCalTime] = useState(() => timeStrTo24h(movie.time_str));
   const [schedForm, setSchedForm] = useState({
@@ -1673,28 +1754,38 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
     time_str: movie.time_str || '10:00 PM',
   });
 
-  // Synchronize inputs when movie updates
+  // Form for adding a new showtime (e.g. 01:00 PM) keeping booked shows as-is
+  const [newShowCalDate, setNewShowCalDate] = useState('2026-11-27');
+  const [newShowCalTime, setNewShowCalTime] = useState('13:00');
+  const [newShowForm, setNewShowForm] = useState({
+    date_str: 'Friday, 27 November, 2026',
+    time_str: '01:00 PM',
+  });
+
+  const activeShows = showsList.filter((sh) => sh.movie_id === 1 && sh.status !== 'cancelled');
+  const currentShow = activeShows.find((sh) => sh.id === selectedShowId) || activeShows[0];
+  const currentBookedCount = currentShow ? currentShow.booked_count : (s?.booked || 0);
+  const isShowLocked = currentBookedCount > 0;
+
+  // Synchronize edit form when selected show updates
   useEffect(() => {
-    if (movie.date_str) {
-      setSchedForm({
-        date_str: movie.date_str,
-        time_str: movie.time_str || '10:00 PM',
-      });
-      setCalDate(dateStrToIso(movie.date_str));
-      setCalTime(timeStrTo24h(movie.time_str));
+    const targetDate = currentShow?.date_str || movie.date_str;
+    const targetTime = currentShow?.time_str || movie.time_str || '10:00 PM';
+    if (targetDate) {
+      setSchedForm({ date_str: targetDate, time_str: targetTime });
+      setCalDate(dateStrToIso(targetDate));
+      setCalTime(timeStrTo24h(targetTime));
     }
-  }, [movie.date_str, movie.time_str]);
+  }, [currentShow?.id, currentShow?.date_str, currentShow?.time_str, movie.date_str, movie.time_str]);
 
   const onCalendarDateChange = (val) => {
     setCalDate(val);
-    const formatted = formatDateWithDay(val);
-    setSchedForm((prev) => ({ ...prev, date_str: formatted }));
+    setSchedForm((prev) => ({ ...prev, date_str: formatDateWithDay(val) }));
   };
 
   const onTimePickerChange = (val) => {
     setCalTime(val);
-    const formatted = formatTime12h(val);
-    setSchedForm((prev) => ({ ...prev, time_str: formatted }));
+    setSchedForm((prev) => ({ ...prev, time_str: formatTime12h(val) }));
   };
 
   // Form for adding an upcoming movie to catalogue
@@ -1714,8 +1805,10 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
   });
 
   const loadStats = useCallback(() => {
-    api('/admin/stats').then(setS).catch((e) => notify(e.message, 'err'));
-  }, [notify]);
+    const targetId = currentShow?.id || selectedShowId || 1;
+    api(`/admin/stats?showId=${targetId}`).then(setS).catch((e) => notify(e.message, 'err'));
+    api('/admin/shows').then((d) => setShowsList(d.shows || [])).catch(() => {});
+  }, [notify, currentShow?.id, selectedShowId]);
 
   const loadHistory = useCallback(() => {
     api('/admin/movies').then((d) => setHistory(d.movies || [])).catch(() => {});
@@ -1732,21 +1825,75 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
       t = setTimeout(loadStats, 300);
     };
     socket.on('seats:update', h);
+    socket.on('shows:update', h);
     return () => {
       socket.off('seats:update', h);
+      socket.off('shows:update', h);
       clearTimeout(t);
     };
   }, [socket, loadStats, loadHistory]);
 
-  // Update schedule of active movie (Baahubali)
+  // Update schedule of selected show (strictly blocked by server & UI if booked > 0)
   const handleUpdateSchedule = async (e) => {
     e.preventDefault();
+    if (isShowLocked) {
+      return notify(`Cannot change time: ${currentBookedCount} ticket(s) already booked. Add a new showtime instead.`, 'err');
+    }
     setBusy(true);
     try {
-      const res = await api('/admin/movies/schedule', { method: 'PUT', body: schedForm });
-      setMovie(res.movie);
-      notify(`Updated schedule to ${res.movie.date_str} at ${res.movie.time_str}`, 'ok');
+      const targetId = currentShow?.id || selectedShowId || 1;
+      const res = await api('/admin/movies/schedule', {
+        method: 'PUT',
+        body: { showId: targetId, ...schedForm },
+      });
+      if (targetId === 1 && res.movie) setMovie(res.movie);
+      notify(`Updated showtime #${targetId} to ${schedForm.date_str} at ${schedForm.time_str}`, 'ok');
+      loadStats();
       loadHistory();
+    } catch (err) {
+      notify(err.message, 'err');
+      loadStats();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Cancel showtime ONLY when 0 tickets are booked
+  const handleCancelUnbookedShow = async () => {
+    const targetId = currentShow?.id || selectedShowId;
+    if (!targetId) return;
+    if (isShowLocked) {
+      return notify(`Cannot cancel show while ${currentBookedCount} ticket(s) are booked.`, 'err');
+    }
+    if (!window.confirm(`Cancel the unbooked ${currentShow?.time_str || ''} show on ${currentShow?.date_str || ''}?`)) return;
+    setBusy(true);
+    try {
+      await api(`/admin/shows/${targetId}`, { method: 'PUT', body: { status: 'cancelled' } });
+      notify(`Cancelled empty show (${currentShow?.time_str}).`, 'ok');
+      setSelectedShowId(1);
+      loadStats();
+    } catch (err) {
+      notify(err.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Create a brand new showtime (e.g. 1:00 PM) leaving booked shows untouched
+  const handleCreateNewShowtime = async (e) => {
+    e.preventDefault();
+    if (!newShowForm.date_str || !newShowForm.time_str) {
+      return notify('Both date and showtime are required', 'err');
+    }
+    setBusy(true);
+    try {
+      const res = await api('/admin/shows', {
+        method: 'POST',
+        body: { movie_id: 1, hall_id: 1, date_str: newShowForm.date_str, time_str: newShowForm.time_str },
+      });
+      notify(`Added new open showtime: ${res.show.date_str} at ${res.show.time_str} (100 seats ready)!`, 'ok');
+      setSelectedShowId(res.show.id);
+      loadStats();
     } catch (err) {
       notify(err.message, 'err');
     } finally {
@@ -1791,7 +1938,8 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
     if (!ids.length) return notify('Enter comma-separated seat numbers to block (e.g. 1, 2, 3)', 'warn');
     setBusy(true);
     try {
-      await api('/admin/shows/1/block-seats', {
+      const targetId = currentShow?.id || selectedShowId || 1;
+      await api(`/admin/shows/${targetId}/block-seats`, {
         method: 'POST',
         body: { seatIds: ids, blocked, reason: 'VIP & Maintenance reserved' },
       });
@@ -1807,24 +1955,65 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
 
   const renderChangeDateTimeCard = () => (
     <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-      <div style={{ marginBottom: 16 }}>
+      <div style={{ marginBottom: 14 }}>
         <h3 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 4px', color: 'var(--ink)' }}>Change Date & Time</h3>
         <p style={{ color: 'var(--mute)', fontSize: 12.5, margin: 0 }}>
-          Update the active showtime. Pushes immediately to all live clients.
+          Edit an unbooked showtime or add a new showtime separately.
         </p>
       </div>
 
+      {/* Show Selector Pills */}
+      {activeShows.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+          {activeShows.map((sh) => {
+            const active = (currentShow?.id || selectedShowId) === sh.id;
+            return (
+              <button
+                key={sh.id}
+                type="button"
+                className={active ? 'btn-primary' : 'btn-ghost'}
+                style={{ fontSize: 11.5, padding: '5px 11px', borderRadius: 8 }}
+                onClick={() => setSelectedShowId(sh.id)}
+              >
+                {sh.time_str} ({sh.booked_count > 0 ? `🔒 ${sh.booked_count} booked` : '0 booked'})
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Strict Lock Notice when tickets are booked */}
+      {isShowLocked && (
+        <div
+          style={{
+            marginBottom: 14,
+            padding: '11px 14px',
+            borderRadius: 10,
+            background: 'var(--peach-soft)',
+            border: '1px solid rgba(255,181,146,0.8)',
+            color: '#9a3412',
+            fontSize: 12.5,
+            lineHeight: 1.5,
+          }}
+        >
+          <b>🔒 Showtime Locked ({currentBookedCount} ticket(s) booked)</b>
+          <div>
+            Cannot edit time or cancel a show once tickets are sold. Keep <b>{currentShow?.time_str || movie.time_str}</b> as-is and add a new showtime below (e.g. 01:00 PM).
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleUpdateSchedule}>
         {/* Screening Date */}
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 14, opacity: isShowLocked ? 0.6 : 1 }}>
           <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>
             Screening Date
           </label>
 
-          {/* Date Picker input + formatted string */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
             <input
               type="date"
+              disabled={isShowLocked}
               aria-label="Screening calendar date"
               value={calDate}
               onChange={(e) => onCalendarDateChange(e.target.value)}
@@ -1834,7 +2023,7 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
                 borderRadius: 8,
                 fontSize: 13.5,
                 fontWeight: 600,
-                cursor: 'pointer',
+                cursor: isShowLocked ? 'not-allowed' : 'pointer',
                 background: '#faf9ff',
                 color: 'var(--ink)',
               }}
@@ -1842,6 +2031,7 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
             <input
               type="text"
               required
+              disabled={isShowLocked}
               placeholder="e.g. Friday, 27 November, 2026"
               value={schedForm.date_str}
               onChange={(e) => setSchedForm({ ...schedForm, date_str: e.target.value })}
@@ -1857,58 +2047,35 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
             />
           </div>
 
-          {/* Date shortcut presets */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="btn-ghost"
-              style={{
-                fontSize: 11.5,
-                padding: '4px 9px',
-                borderRadius: 6,
-                background: calDate === '2026-11-27' ? 'var(--accent-soft)' : undefined,
-                color: calDate === '2026-11-27' ? 'var(--accent)' : undefined,
-                fontWeight: calDate === '2026-11-27' ? 700 : 500,
-              }}
-              onClick={() => onCalendarDateChange('2026-11-27')}
-            >
-              🌟 Friday, 27 Nov (Premiere)
-            </button>
-            <button
-              type="button"
-              className="btn-ghost"
-              style={{
-                fontSize: 11.5,
-                padding: '4px 9px',
-                borderRadius: 6,
-                background: calDate === '2026-11-28' ? 'var(--accent-soft)' : undefined,
-                color: calDate === '2026-11-28' ? 'var(--accent)' : undefined,
-                fontWeight: calDate === '2026-11-28' ? 700 : 500,
-              }}
-              onClick={() => onCalendarDateChange('2026-11-28')}
-            >
-              Saturday, 28 Nov
-            </button>
-            <button
-              type="button"
-              className="btn-ghost"
-              style={{
-                fontSize: 11.5,
-                padding: '4px 9px',
-                borderRadius: 6,
-                background: calDate === '2026-11-29' ? 'var(--accent-soft)' : undefined,
-                color: calDate === '2026-11-29' ? 'var(--accent)' : undefined,
-                fontWeight: calDate === '2026-11-29' ? 700 : 500,
-              }}
-              onClick={() => onCalendarDateChange('2026-11-29')}
-            >
-              Sunday, 29 Nov
-            </button>
+            {[
+              { iso: '2026-11-27', label: '🌟 Friday, 27 Nov (Premiere)' },
+              { iso: '2026-11-28', label: 'Saturday, 28 Nov' },
+              { iso: '2026-11-29', label: 'Sunday, 29 Nov' },
+            ].map((p) => (
+              <button
+                key={p.iso}
+                type="button"
+                disabled={isShowLocked}
+                className="btn-ghost"
+                style={{
+                  fontSize: 11.5,
+                  padding: '4px 9px',
+                  borderRadius: 6,
+                  background: calDate === p.iso ? 'var(--accent-soft)' : undefined,
+                  color: calDate === p.iso ? 'var(--accent)' : undefined,
+                  fontWeight: calDate === p.iso ? 700 : 500,
+                }}
+                onClick={() => onCalendarDateChange(p.iso)}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Showtime */}
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 16, opacity: isShowLocked ? 0.6 : 1 }}>
           <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>
             Showtime
           </label>
@@ -1916,6 +2083,7 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
           <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
             <input
               type="time"
+              disabled={isShowLocked}
               aria-label="Showtime picker"
               value={calTime}
               onChange={(e) => onTimePickerChange(e.target.value)}
@@ -1925,7 +2093,7 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
                 borderRadius: 8,
                 fontSize: 13.5,
                 fontWeight: 600,
-                cursor: 'pointer',
+                cursor: isShowLocked ? 'not-allowed' : 'pointer',
                 background: '#faf9ff',
                 color: 'var(--ink)',
               }}
@@ -1933,6 +2101,7 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
             <input
               type="text"
               required
+              disabled={isShowLocked}
               placeholder="e.g. 10:00 PM"
               value={schedForm.time_str}
               onChange={(e) => setSchedForm({ ...schedForm, time_str: e.target.value })}
@@ -1948,12 +2117,12 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
             />
           </div>
 
-          {/* Showtime preset chips */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {['10:00 PM', '07:30 PM', '06:00 PM', '04:15 PM', '01:00 PM', '11:15 PM'].map((t) => (
               <button
                 key={t}
                 type="button"
+                disabled={isShowLocked}
                 className="btn-ghost"
                 style={{
                   fontSize: 11.5,
@@ -1974,27 +2143,93 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
           </div>
         </div>
 
-        {/* Update Showtime & Date Green Button */}
-        <button
-          type="submit"
-          disabled={busy}
-          style={{
-            width: '100%',
-            padding: '12px 18px',
-            background: '#16a34a',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: 8,
-            fontSize: 14.5,
-            fontWeight: 700,
-            cursor: busy ? 'not-allowed' : 'pointer',
-            boxShadow: '0 2px 6px rgba(22, 163, 74, 0.25)',
-            transition: 'all 0.15s ease',
-          }}
-        >
-          {busy ? 'Updating...' : 'Update Showtime & Date'}
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            type="submit"
+            disabled={busy || isShowLocked}
+            style={{
+              flex: 1,
+              padding: '11px 16px',
+              background: isShowLocked ? '#94a3b8' : '#16a34a',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: busy || isShowLocked ? 'not-allowed' : 'pointer',
+              boxShadow: isShowLocked ? 'none' : '0 2px 6px rgba(22, 163, 74, 0.25)',
+            }}
+          >
+            {isShowLocked ? 'Locked (Tickets Sold)' : busy ? 'Updating...' : 'Update Showtime & Date'}
+          </button>
+
+          {/* Only permit Cancel Show when ZERO tickets are booked */}
+          {!isShowLocked && currentShow && currentShow.status === 'open' && (
+            <button
+              type="button"
+              disabled={busy}
+              className="btn-ghost"
+              style={{
+                borderRadius: 8,
+                padding: '11px 14px',
+                borderColor: '#fca5a5',
+                color: '#dc2626',
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+              onClick={handleCancelUnbookedShow}
+            >
+              Cancel Show
+            </button>
+          )}
+        </div>
       </form>
+
+      {/* Add Another Showtime Form */}
+      <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px dashed var(--line)' }}>
+        <h4 style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 4, color: 'var(--ink)' }}>
+          ➕ Add New Showtime ({movie.title})
+        </h4>
+        <p style={{ color: 'var(--mute)', fontSize: 12, marginBottom: 12 }}>
+          Add another screening (e.g. 01:00 PM) with 100 fresh seats while keeping existing shows untouched.
+        </p>
+
+        <form onSubmit={handleCreateNewShowtime}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+            <input
+              type="date"
+              aria-label="New showtime date"
+              value={newShowCalDate}
+              onChange={(e) => {
+                setNewShowCalDate(e.target.value);
+                setNewShowForm((prev) => ({ ...prev, date_str: formatDateWithDay(e.target.value) }));
+              }}
+              style={{ padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 12.5, fontWeight: 600 }}
+            />
+            <input
+              type="time"
+              aria-label="New showtime hour"
+              value={newShowCalTime}
+              onChange={(e) => {
+                setNewShowCalTime(e.target.value);
+                setNewShowForm((prev) => ({ ...prev, time_str: formatTime12h(e.target.value) }));
+              }}
+              style={{ padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 12.5, fontWeight: 600 }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="text"
+              readOnly
+              value={`${newShowForm.date_str} • ${newShowForm.time_str}`}
+              style={{ flex: 1, padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 12, background: '#f8fafc', color: 'var(--ink)', fontWeight: 600 }}
+            />
+            <button type="submit" disabled={busy} className="btn-primary" style={{ borderRadius: 8, padding: '8px 16px', fontSize: 13 }}>
+              Add Showtime
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 

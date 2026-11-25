@@ -283,6 +283,13 @@ async function executeHold({ uid, showId, requestedIds }) {
     // 1. Lock caller user row first (serializes this user's concurrent requests)
     await c.query('SELECT 1 FROM users WHERE id = $1 FOR UPDATE', [uid]);
 
+    // 2. Take share lock on show row so concurrent schedule edits/cancellations cannot race
+    const { rows: [showRow] } = await c.query('SELECT id, status FROM shows WHERE id = $1 FOR SHARE', [showId]);
+    if (!showRow) throw new HttpError(404, 'NOT_FOUND', 'Show not found');
+    if (showRow.status === 'cancelled') {
+      throw new HttpError(409, 'SHOW_CANCELLED', 'This showtime has been cancelled and is no longer accepting bookings.');
+    }
+
     // 2. Enforce global maximum 4 seats per customer on this show
     const { rows: [{ n: owned }] } = await c.query(
       `SELECT count(*)::int AS n FROM show_seats s
@@ -377,6 +384,8 @@ app.post('/api/holds', auth, wrap(async (req, res) => {
 // ---------- Bookings & Pricing Calculations ----------
 const bookingSelect = `SELECT b.id, b.show_id, b.reference, b.total_price, b.subtotal, b.discount_amount,
   b.convenience_fee, b.gst_amount, b.coupon_code, b.status, b.created_at,
+  (SELECT sh.date_str FROM shows sh WHERE sh.id = b.show_id) AS show_date_str,
+  (SELECT sh.time_str FROM shows sh WHERE sh.id = b.show_id) AS show_time_str,
   coalesce(
     json_agg(
       json_build_object('id', s.id, 'label', s.row_label || s.seat_number, 'price', s.price, 'tier', s.tier)
@@ -391,6 +400,12 @@ async function executeBooking({ uid, key, showId, couponCode = null }) {
   return await tx(async (c) => {
     // 1. Lock user row first
     await c.query('SELECT 1 FROM users WHERE id = $1 FOR UPDATE', [uid]);
+
+    // 1b. Verify show has not been cancelled
+    const { rows: [showRow] } = await c.query('SELECT id, status FROM shows WHERE id = $1 FOR SHARE', [showId]);
+    if (showRow && showRow.status === 'cancelled') {
+      throw new HttpError(409, 'SHOW_CANCELLED', 'This showtime has been cancelled.');
+    }
 
     // 2. Idempotency check: replay previous booking if key matches
     const prior = await c.query(
@@ -667,43 +682,144 @@ app.post('/api/admin/movies', auth, requireRole('operations'), wrap(async (req, 
 }));
 
 // 3. Show Scheduling & Seat Blocking (Role: operations, super_admin)
+app.get('/api/admin/shows', auth, adminOnly, wrap(async (req, res) => {
+  const { rows } = await pool.query(`
+    SELECT s.*, m.title AS movie_title, h.name AS hall_name,
+      (SELECT count(*)::int FROM show_seats ss WHERE ss.show_id = s.id AND ss.status = 'booked') AS booked_count,
+      (SELECT count(*)::int FROM show_seats ss WHERE ss.show_id = s.id AND ss.status = 'held' AND ss.hold_expires_at > now()) AS held_count,
+      (SELECT count(*)::int FROM show_seats ss WHERE ss.show_id = s.id AND (ss.status = 'available' OR (ss.status = 'held' AND ss.hold_expires_at <= now()))) AS available_count
+    FROM shows s
+    JOIN movies m ON m.id = s.movie_id
+    JOIN halls h ON h.id = s.hall_id
+    ORDER BY s.id ASC
+  `);
+  res.json({ shows: rows });
+}));
+
 app.post('/api/admin/shows', auth, requireRole('operations'), wrap(async (req, res) => {
-  const { movie_id, hall_id, starts_at, date_str, time_str, price_recliner, price_club, price_premium } = req.body || {};
-  if (!movie_id || !hall_id || !date_str || !time_str)
-    throw new HttpError(400, 'VALIDATION', 'movie_id, hall_id, date_str, and time_str are required');
+  const { movie_id = 1, hall_id = 1, starts_at, date_str, time_str, price_recliner = 350, price_club = 250, price_premium = 180 } = req.body || {};
+  if (!date_str || !time_str)
+    throw new HttpError(400, 'VALIDATION', 'date_str and time_str are required');
 
-  const { rows: [newShow] } = await pool.query(
-    `INSERT INTO shows (movie_id, hall_id, starts_at, date_str, time_str, price_recliner, price_club, price_premium, status)
-     VALUES ($1, $2, coalesce($3::timestamptz, now()), $4, $5, $6, $7, $8, 'open')
-     RETURNING *`,
-    [movie_id, hall_id, starts_at || null, date_str, time_str, price_recliner || 350, price_club || 250, price_premium || 180]
-  );
-
-  // Auto-generate 100 show_seats based on hall template
-  const { rows: templateSeats } = await pool.query(
-    'SELECT * FROM hall_seats WHERE hall_id = $1 ORDER BY id',
-    [hall_id]
-  );
-  for (const ts of templateSeats) {
-    const price = ts.tier === 'recliner' ? (price_recliner || 350) : ts.tier === 'club' ? (price_club || 250) : (price_premium || 180);
-    await pool.query(
-      `INSERT INTO show_seats (show_id, seat_id, row_label, seat_number, tier, price, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'available')`,
-      [newShow.id, ts.id, ts.row_label, ts.seat_number, ts.tier, price]
+  const newShow = await tx(async (c) => {
+    await c.query(`SELECT setval('shows_id_seq', COALESCE((SELECT max(id) FROM shows), 1))`);
+    const { rows: [created] } = await c.query(
+      `INSERT INTO shows (movie_id, hall_id, starts_at, date_str, time_str, price_recliner, price_club, price_premium, status)
+       VALUES ($1, $2, coalesce($3::timestamptz, now()), $4, $5, $6, $7, $8, 'open')
+       RETURNING *`,
+      [movie_id, hall_id, starts_at || null, date_str.trim(), time_str.trim(), price_recliner, price_club, price_premium]
     );
-  }
 
-  await logAudit(pool, {
-    adminId: req.user.id,
-    action: 'CREATE_SHOW',
-    targetType: 'show',
-    targetId: newShow.id,
-    details: { movie_id, date_str, time_str },
-    reason: 'Scheduled new screening',
+    const { rows: templateSeats } = await c.query(
+      'SELECT * FROM hall_seats WHERE hall_id = $1 ORDER BY id',
+      [hall_id]
+    );
+    await c.query(`SELECT setval('show_seats_id_seq', COALESCE((SELECT max(id) FROM show_seats), 1))`);
+    for (const ts of templateSeats) {
+      const price = ts.tier === 'recliner' ? price_recliner : ts.tier === 'club' ? price_club : price_premium;
+      await c.query(
+        `INSERT INTO show_seats (show_id, seat_id, row_label, seat_number, tier, price, status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'available')`,
+        [created.id, ts.id, ts.row_label, ts.seat_number, ts.tier, price]
+      );
+    }
+
+    await logAudit(c, {
+      adminId: req.user.id,
+      action: 'CREATE_SHOW',
+      targetType: 'show',
+      targetId: created.id,
+      details: { movie_id, date_str: created.date_str, time_str: created.time_str },
+      reason: 'Scheduled new screening showtime',
+    });
+
+    return created;
   });
+
+  if (app.locals.io) {
+    app.locals.io.emit('shows:update', { show: newShow });
+  }
 
   res.status(201).json({ show: newShow });
 }));
+
+// Transactional show schedule update / unbooked cancellation helper
+async function updateShowTransactional({ showId, date_str, time_str, status, adminId }) {
+  return await tx(async (c) => {
+    const { rows: [show] } = await c.query('SELECT * FROM shows WHERE id = $1 FOR UPDATE', [showId]);
+    if (!show) throw new HttpError(404, 'NOT_FOUND', 'Show not found');
+
+    const { rows: [counts] } = await c.query(
+      `SELECT
+         (SELECT count(*)::int FROM show_seats WHERE show_id = $1 AND status = 'booked') AS seat_booked,
+         (SELECT count(*)::int FROM bookings WHERE show_id = $1 AND status = 'confirmed') AS booking_count`,
+      [showId]
+    );
+    const hasBookings = counts.seat_booked > 0 || counts.booking_count > 0;
+
+    const scheduleChanged =
+      (date_str !== undefined && date_str !== null && date_str.trim() !== show.date_str) ||
+      (time_str !== undefined && time_str !== null && time_str.trim() !== show.time_str);
+
+    if (hasBookings && scheduleChanged) {
+      throw new HttpError(
+        409,
+        'SCHEDULE_LOCKED',
+        `Cannot change show date or time while ${counts.seat_booked} seat(s) are booked. Keep ${show.time_str} as-is and add a new showtime instead.`
+      );
+    }
+
+    if (status === 'cancelled' && hasBookings) {
+      throw new HttpError(
+        409,
+        'SHOW_HAS_BOOKINGS',
+        `Cannot cancel this show while ${counts.seat_booked} ticket(s) are already booked. A show can only be cancelled when 0 tickets are booked.`
+      );
+    }
+
+    const nextStatus = status || show.status;
+    const nextDate = date_str ? date_str.trim() : show.date_str;
+    const nextTime = time_str ? time_str.trim() : show.time_str;
+
+    const { rows: [updated] } = await c.query(
+      `UPDATE shows SET status = $1, date_str = $2, time_str = $3 WHERE id = $4 RETURNING *`,
+      [nextStatus, nextDate, nextTime, showId]
+    );
+
+    let releasedSeatIds = [];
+    if (nextStatus === 'cancelled') {
+      const rel = await c.query(
+        `UPDATE show_seats SET status = 'available', held_by = NULL, hold_expires_at = NULL
+         WHERE show_id = $1 AND status = 'held' RETURNING id`,
+        [showId]
+      );
+      releasedSeatIds = rel.rows.map((r) => r.id);
+    }
+
+    if (showId === 1 && nextStatus === 'open') {
+      await c.query(
+        `UPDATE screenings SET date_str = $1, time_str = $2 WHERE active = true`,
+        [nextDate, nextTime]
+      );
+    }
+
+    await logAudit(c, {
+      adminId,
+      action: nextStatus === 'cancelled' ? 'CANCEL_SHOW' : 'UPDATE_SCHEDULE',
+      targetType: 'show',
+      targetId: showId,
+      details: { status: nextStatus, date_str: nextDate, time_str: nextTime },
+      reason: nextStatus === 'cancelled' ? 'Admin cancelled unbooked show' : 'Screening schedule modification',
+    });
+
+    const { rows: [movieInfo] } = await c.query(
+      'SELECT s.*, m.title, m.poster_url, m.synopsis, m.genres AS genre, m.language FROM shows s JOIN movies m ON m.id = s.movie_id WHERE s.id = $1',
+      [showId]
+    );
+
+    return { updated, movieInfo, releasedSeatIds };
+  });
+}
 
 // Seat Blocking endpoint for maintenance or VIP guests
 app.post('/api/admin/shows/:showId/block-seats', auth, requireRole('operations'), wrap(async (req, res) => {
@@ -744,38 +860,24 @@ app.post('/api/admin/shows/:showId/block-seats', auth, requireRole('operations')
   res.json({ updated: changed.length, seatIds: changed });
 }));
 
-// Update active movie schedule (Matches legacy admin control form)
+// Update show schedule (blocked strictly if tickets are already booked)
 app.put('/api/admin/movies/schedule', auth, requireRole('operations'), wrap(async (req, res) => {
-  const { date_str, time_str } = req.body || {};
+  const { showId = 1, date_str, time_str } = req.body || {};
   if (!date_str || !time_str) throw new HttpError(400, 'VALIDATION', 'Date and time are required');
 
-  const { rows: [updatedShow] } = await pool.query(
-    `UPDATE shows SET date_str = $1, time_str = $2 WHERE id = 1 RETURNING *`,
-    [date_str.trim(), time_str.trim()]
-  );
-  await pool.query(
-    `UPDATE screenings SET date_str = $1, time_str = $2 WHERE active = true`,
-    [date_str.trim(), time_str.trim()]
-  );
-
-  const { rows: [m] } = await pool.query(
-    'SELECT s.*, m.title, m.poster_url, m.synopsis, m.genres AS genre, m.language FROM shows s JOIN movies m ON m.id = s.movie_id WHERE s.id = 1'
-  );
-
-  if (app.locals.io) {
-    app.locals.io.emit('movie:update', m);
-  }
-
-  await logAudit(pool, {
+  const out = await updateShowTransactional({
+    showId: Number(showId) || 1,
+    date_str,
+    time_str,
     adminId: req.user.id,
-    action: 'UPDATE_SCHEDULE',
-    targetType: 'show',
-    targetId: 1,
-    details: { date_str, time_str },
-    reason: 'Screening time modification',
   });
 
-  res.json({ movie: m });
+  if (app.locals.io) {
+    if (Number(showId) === 1 || !req.body?.showId) app.locals.io.emit('movie:update', out.movieInfo);
+    app.locals.io.emit('shows:update', { show: out.updated });
+  }
+
+  res.json({ movie: out.movieInfo, show: out.updated });
 }));
 
 // 4. Support Desk & Booking Lookup (Role: support, super_admin)
@@ -914,26 +1016,22 @@ app.get('/api/admin/users', auth, requireRole('support'), wrap(async (req, res) 
 app.put('/api/admin/shows/:id', auth, requireRole('operations'), wrap(async (req, res) => {
   const id = Number(req.params.id);
   const { status, date_str, time_str } = req.body || {};
-  const { rows: [s] } = await pool.query(
-    `UPDATE shows SET
-       status = coalesce($1, status),
-       date_str = coalesce($2, date_str),
-       time_str = coalesce($3, time_str)
-     WHERE id = $4 RETURNING *`,
-    [status || null, date_str || null, time_str || null, id]
-  );
-  if (!s) throw new HttpError(404, 'NOT_FOUND', 'Show not found');
-
-  await logAudit(pool, {
+  const out = await updateShowTransactional({
+    showId: id,
+    status,
+    date_str,
+    time_str,
     adminId: req.user.id,
-    action: 'UPDATE_SHOW',
-    targetType: 'show',
-    targetId: id,
-    details: { status: s.status, date_str: s.date_str, time_str: s.time_str },
-    reason: 'Admin show update',
   });
 
-  res.json({ show: s });
+  if (out.releasedSeatIds.length) {
+    app.locals.broadcast(out.releasedSeatIds, id);
+  }
+  if (app.locals.io) {
+    app.locals.io.emit('shows:update', { show: out.updated });
+  }
+
+  res.json({ show: out.updated, movie: out.movieInfo });
 }));
 
 app.put('/api/admin/users/:id/suspend', auth, requireRole('super_admin'), wrap(async (req, res) => {

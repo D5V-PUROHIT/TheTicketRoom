@@ -44,6 +44,7 @@ async function initDb() {
       await pool.query(
         `UPDATE screenings SET date_str = 'Friday, 27 November, 2026', time_str = '10:00 PM' WHERE active = true AND (date_str LIKE '%28 November%' OR date_str IS NULL)`
       ).catch(() => {});
+      await syncSequences();
       console.log('[TheTicketRoom] Theatre seats & schedule verified.');
     }
   } catch (err) {
@@ -171,7 +172,22 @@ async function autoSeedTheatreData() {
     ON CONFLICT (code) DO NOTHING;
   `);
 
+  await syncSequences();
   console.log('[TheTicketRoom] Auto-seed complete: Hall, Movies, Shows, 100 Seats, Users, and Coupons initialized.');
+}
+
+async function syncSequences() {
+  const seqs = [
+    ['halls_id_seq', 'halls'],
+    ['hall_seats_id_seq', 'hall_seats'],
+    ['movies_id_seq', 'movies'],
+    ['shows_id_seq', 'shows'],
+    ['show_seats_id_seq', 'show_seats'],
+    ['users_id_seq', 'users'],
+  ];
+  for (const [seq, tbl] of seqs) {
+    await pool.query(`SELECT setval('${seq}', COALESCE((SELECT max(id) FROM ${tbl}), 1))`).catch(() => {});
+  }
 }
 
 module.exports = { initDb };

@@ -117,3 +117,67 @@ test('Multi-show isolation: 200 users concurrently racing across two distinct sh
   const { rows } = await pool.query("SELECT count(*)::int AS n FROM show_seats WHERE status='booked'");
   assert.equal(rows[0].n, 8, 'Total booked seats across both shows must equal 8');
 });
+
+test('Strict showtime rules: block schedule edit/cancel when booked > 0, allow adding new showtime and cancelling unbooked shows', async () => {
+  await reset();
+  const userTok = await login(1);
+  const adminLogin = await call('/api/auth/login', {
+    method: 'POST',
+    body: { email: 'admin@test.com', password: 'Admin@123' },
+  });
+  assert.equal(adminLogin.status, 200);
+  const adminTok = adminLogin.body.token;
+
+  // 1. User books 1 seat on Show 1 (10:00 PM)
+  const h = await call('/api/holds', { method: 'POST', token: userTok, body: { seatIds: [1] } });
+  assert.equal(h.status, 200);
+  const b = await call('/api/bookings', { method: 'POST', token: userTok, key: 'lock-test-1' });
+  assert.equal(b.status, 201);
+
+  // 2. Admin tries to modify Show 1 time -> blocked with 409 SCHEDULE_LOCKED
+  const editLocked = await call('/api/admin/movies/schedule', {
+    method: 'PUT',
+    token: adminTok,
+    body: { showId: 1, date_str: 'Friday, 27 November, 2026', time_str: '01:00 PM' },
+  });
+  assert.equal(editLocked.status, 409);
+  assert.equal(editLocked.body.error.code, 'SCHEDULE_LOCKED');
+
+  // 3. Admin tries to cancel Show 1 while ticket is booked -> blocked with 409 SHOW_HAS_BOOKINGS
+  const cancelLocked = await call('/api/admin/shows/1', {
+    method: 'PUT',
+    token: adminTok,
+    body: { status: 'cancelled' },
+  });
+  assert.equal(cancelLocked.status, 409);
+  assert.equal(cancelLocked.body.error.code, 'SHOW_HAS_BOOKINGS');
+
+  // 4. Admin creates a brand new 01:00 PM show keeping Show 1 intact
+  const created = await call('/api/admin/shows', {
+    method: 'POST',
+    token: adminTok,
+    body: { movie_id: 1, hall_id: 1, date_str: 'Friday, 27 November, 2026', time_str: '01:00 PM' },
+  });
+  assert.equal(created.status, 201);
+  const newShowId = created.body.show.id;
+
+  // 5. New show has 0 bookings -> admin can both reschedule AND cancel it cleanly
+  const editEmpty = await call(`/api/admin/shows/${newShowId}`, {
+    method: 'PUT',
+    token: adminTok,
+    body: { time_str: '02:00 PM' },
+  });
+  assert.equal(editEmpty.status, 200);
+  assert.equal(editEmpty.body.show.time_str, '02:00 PM');
+
+  const cancelEmpty = await call(`/api/admin/shows/${newShowId}`, {
+    method: 'PUT',
+    token: adminTok,
+    body: { status: 'cancelled' },
+  });
+  assert.equal(cancelEmpty.status, 200);
+  assert.equal(cancelEmpty.body.show.status, 'cancelled');
+
+  // Clean up test show row
+  await pool.query('DELETE FROM shows WHERE id = $1', [newShowId]);
+});
