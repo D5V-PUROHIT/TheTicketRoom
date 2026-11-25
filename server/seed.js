@@ -59,7 +59,7 @@ const priceFor = (tier) => (tier === 'recliner' ? 350 : tier === 'club' ? 250 : 
       id: 2,
       title: 'Ramayana - Hindi',
       synopsis: 'An epic retelling of the timeless legend of courage, righteousness, devotion, and the triumph of truth.',
-      poster_url: '/poster-observatory.svg',
+      poster_url: '/poster-ramayana.svg',
       trailer_url: 'https://youtube.com',
       cast_members: 'Ranbir Kapoor, Sai Pallavi, Yash',
       language: 'Hindi',

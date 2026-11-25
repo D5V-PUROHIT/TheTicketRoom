@@ -103,7 +103,7 @@ const upcomingMovies = [
     language: 'Hindi • Dolby Atmos 7.1',
     rating: '9.8',
     votes: '112K interested',
-    poster_url: '/poster-observatory.svg',
+    poster_url: '/poster-ramayana.svg',
     time_str: '07:30 PM',
     date_str: 'Friday, 4 December, 2026',
     synopsis: 'An epic adaptation of the timeless legend of courage, righteousness, devotion, and the triumph of truth.',
@@ -1622,7 +1622,7 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
   const [newMovieForm, setNewMovieForm] = useState({
     title: '',
     synopsis: '',
-    poster_url: '/poster-observatory.svg',
+    poster_url: '/poster-ramayana.svg',
     genres: 'Action • Epic • Drama',
     language: 'Hindi, Telugu',
     certificate: 'U/A 13+',

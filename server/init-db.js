@@ -39,6 +39,9 @@ async function initDb() {
         `UPDATE shows SET status = 'scheduled', starts_at = '2026-12-11 16:15:00+05:30', date_str = 'Friday, 11 December, 2026', time_str = '04:15 PM' WHERE id = 3`
       ).catch(() => {});
       await pool.query(
+        `UPDATE movies SET poster_url = '/poster-ramayana.svg' WHERE id = 2 AND poster_url = '/poster-observatory.svg'`
+      ).catch(() => {});
+      await pool.query(
         `UPDATE screenings SET date_str = 'Friday, 27 November, 2026', time_str = '10:00 PM' WHERE active = true AND (date_str LIKE '%28 November%' OR date_str IS NULL)`
       ).catch(() => {});
       console.log('[TheTicketRoom] Theatre seats & schedule verified.');
@@ -78,7 +81,7 @@ async function autoSeedTheatreData() {
       id: 2,
       title: 'Ramayana - Hindi',
       synopsis: 'An epic adaptation of the ancient legend of courage, righteousness, and the triumph of truth.',
-      poster_url: '/poster-observatory.svg',
+      poster_url: '/poster-ramayana.svg',
       genres: 'Mythology • Epic • Action',
       language: 'Hindi',
     },
