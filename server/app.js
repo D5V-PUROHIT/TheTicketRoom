@@ -912,6 +912,18 @@ setInterval(async () => {
   }
 }, 3000).unref();
 
+// Health Check Endpoint
+app.get('/healthz', wrap(async (req, res) => {
+  const { rows } = await pool.query('SELECT 1 AS ok');
+  res.json({
+    status: 'ok',
+    service: 'TheTicketRoom',
+    database: rows[0]?.ok === 1 ? 'healthy' : 'degraded',
+    uptime: Math.round(process.uptime()),
+    timestamp: new Date().toISOString(),
+  });
+}));
+
 // ---------- Static Client Hosting & Error Handler ----------
 const dist = path.join(__dirname, '..', 'client', 'dist');
 if (fs.existsSync(dist)) {

@@ -6,23 +6,39 @@ const pool = require('./db');
 const server = http.createServer(app);
 const io = new Server(server);
 io.use((socket, next) => {
-  try { jwt.verify(socket.handshake.auth.token, process.env.JWT_SECRET); next(); }
-  catch { next(new Error('unauthenticated')); }
+  try {
+    jwt.verify(socket.handshake.auth.token, process.env.JWT_SECRET);
+    next();
+  } catch {
+    next(new Error('unauthenticated'));
+  }
 });
+
 const presence = () => io.emit('presence', io.engine.clientsCount);
-io.on('connection', (s) => { presence(); s.on('disconnect', presence); });
+io.on('connection', (s) => {
+  presence();
+  s.on('disconnect', presence);
+});
 app.locals.io = io;
 
-// Persists expiry of unconfirmed holds (reads already treat expired holds as available)
-// and tells every connected client.
-setInterval(async () => {
-  try {
-    const { rows } = await pool.query(
-      `UPDATE seats SET status='available', held_by=NULL, hold_expires_at=NULL
-       WHERE status='held' AND hold_expires_at <= now() RETURNING id`
-    );
-    if (rows.length) app.locals.broadcast(rows.map((r) => r.id));
-  } catch (e) { console.error('sweeper', e.message); }
-}, 3000);
+// Graceful shutdown handling
+const shutdown = (signal) => {
+  console.log(`[TheTicketRoom] Received ${signal}. Shutting down gracefully...`);
+  server.close(async () => {
+    console.log('[TheTicketRoom] HTTP server closed.');
+    try {
+      await pool.end();
+      console.log('[TheTicketRoom] Database connection pool drained.');
+    } catch (e) {
+      console.error('[TheTicketRoom] Error draining pool:', e.message);
+    }
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10000).unref();
+};
 
-server.listen(process.env.PORT || 3000, () => console.log('Listening on', server.address().port));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`TheTicketRoom server listening on port ${PORT}`));
