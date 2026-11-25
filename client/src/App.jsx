@@ -560,28 +560,31 @@ function TheatreView({ user, socket, notify, logout, online, onBack, onOpenAuth,
 
       {/* Auditorium Seat Map */}
       <div className="auditorium-box">
-        {/* Tier 1: ₹350 RECLINER (Rows A & B) */}
+        {/* Tier 1: ₹350 RECLINER (Row A - Top 10 Seats Full Width) */}
         <div className="tier-header-line">
           <span className="tier-header-title">{inr(350)} RECLINER</span>
         </div>
-        {['A', 'B'].map((r) => renderRow(r))}
+        {renderRow('A')}
 
-        {/* Tier 2: ₹250 CLUB (Rows C, D, E, F) */}
+        {/* Spacing / Aisle under top row */}
+        <div style={{ height: 18 }} />
+
+        {/* Tier 2: ₹250 CLUB (Rows B through F with 2 - 6 - 2 Aisle Split) */}
         <div className="tier-header-line">
           <span className="tier-header-title">{inr(250)} CLUB</span>
         </div>
-        {['C', 'D', 'E', 'F'].map((r) => renderRow(r))}
+        {['B', 'C', 'D', 'E', 'F'].map((r) => renderRow(r))}
 
-        {/* Tier 3: ₹180 PREMIUM (Rows G, H, I, J) */}
+        {/* Tier 3: ₹180 PREMIUM (Rows G through J with 2 - 6 - 2 Aisle Split) */}
         <div className="tier-header-line">
           <span className="tier-header-title">{inr(180)} PREMIUM</span>
         </div>
         {['G', 'H', 'I', 'J'].map((r) => renderRow(r))}
 
-        {/* 3D Perspective Screen (Matches User's Screenshot at Bottom) */}
-        <div className="bms-screen-wrapper">
-          <div className="bms-screen-trapezoid" />
-          <div className="bms-screen-label">All eyes this way please</div>
+        {/* Screen at Bottom (Clean Screen Line like User Diagram) */}
+        <div className="bms-diagram-screen">
+          <div className="screen-bar-line" />
+          <div className="screen-bar-text">Screen</div>
         </div>
 
         {/* BMS Legend (Matches User's Screenshot) */}
@@ -649,23 +652,47 @@ function TheatreView({ user, socket, notify, logout, online, onBack, onOpenAuth,
 
   function renderRow(r) {
     const rowSeats = all.filter((s) => s.row_label === r);
-    const leftBlock = rowSeats.slice(0, 5);
-    const rightBlock = rowSeats.slice(5, 10);
+
+    // Row A: Top 10 seats span continuously across (as in user wireframe)
+    if (r === 'A') {
+      return (
+        <div className="bms-seat-row row-a-full" key={r}>
+          <span className="bms-row-letter">{r}</span>
+          <div className="bms-seat-block full-10">
+            {rowSeats.map((s) => renderSeatBtn(s))}
+          </div>
+          <span className="bms-row-letter" style={{ marginLeft: 12, marginRight: 0 }}>{r}</span>
+        </div>
+      );
+    }
+
+    // Rows B to J: 2 seats (Left Wing) | Aisle | 6 seats (Center Block) | Aisle | 2 seats (Right Wing)
+    const leftBlock = rowSeats.slice(0, 2);
+    const centerBlock = rowSeats.slice(2, 8);
+    const rightBlock = rowSeats.slice(8, 10);
 
     return (
       <div className="bms-seat-row" key={r}>
         <span className="bms-row-letter">{r}</span>
 
-        {/* Left Block (Seats 01 to 05) */}
-        <div className="bms-seat-block">
+        {/* Left Wing (2 Seats) */}
+        <div className="bms-seat-block wing-2">
           {leftBlock.map((s) => renderSeatBtn(s))}
         </div>
 
-        {/* Center Walkway Aisle */}
+        {/* Left Aisle Gap */}
         <div className="bms-aisle-gap" />
 
-        {/* Right Block (Seats 06 to 10) */}
-        <div className="bms-seat-block">
+        {/* Center Block (6 Seats) */}
+        <div className="bms-seat-block center-6">
+          {centerBlock.map((s) => renderSeatBtn(s))}
+        </div>
+
+        {/* Right Aisle Gap */}
+        <div className="bms-aisle-gap" />
+
+        {/* Right Wing (2 Seats) */}
+        <div className="bms-seat-block wing-2">
           {rightBlock.map((s) => renderSeatBtn(s))}
         </div>
 
