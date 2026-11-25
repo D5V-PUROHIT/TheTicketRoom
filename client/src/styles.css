@@ -737,6 +737,13 @@ button:focus-visible, input:focus-visible {
   font-weight: 700;
   box-shadow: 0 2px 8px rgba(56, 194, 143, 0.4);
 }
+.auditorium-seat.own-booked {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent-hover) !important;
+  font-weight: 700;
+  cursor: not-allowed;
+}
 .auditorium-seat.booked {
   background: var(--sold-bg) !important;
   border-color: var(--sold-border) !important;
@@ -791,6 +798,7 @@ button:focus-visible, input:focus-visible {
 .leg-item { display: flex; align-items: center; gap: 7px; }
 .leg-box { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--avail-border); background: #ffffff; }
 .leg-box.mine { background: var(--selected-bg); border-color: var(--selected-bg); }
+.leg-box.own-booked { background: var(--accent-soft); border-color: var(--accent); }
 .leg-box.sold { background: var(--sold-bg); border-color: var(--sold-border); }
 .leg-box.held { background: var(--held-bg); border-color: var(--held-border); }
 

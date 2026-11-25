@@ -203,50 +203,74 @@ app.get('/api/movie', wrap(async (req, res) => {
 
 // ---------- Seats & Holds (Multi-Show with Single-Show Fallback) ----------
 
-// Get seats for a specific show (with auto-healing fallback)
-app.get('/api/shows/:showId/seats', optionalAuth, wrap(async (req, res) => {
-  const showId = Number(req.params.showId);
-  if (!Number.isInteger(showId)) throw new HttpError(400, 'VALIDATION', 'Invalid showId');
+// Shared seat-map fetcher returning seat statuses plus caller's booked seat quota
+async function fetchShowSeatsPayload(showId, userId, allowLegacyView = false) {
+  let rows = [];
+  let resolvedShowId = showId;
+
   try {
-    const { rows } = await pool.query(`SELECT ${VIEW} FROM show_seats WHERE show_id = $1 ORDER BY id`, [showId]);
-    if (rows && rows.length > 0) {
-      return res.json({ seats: rows, maxSeats: MAX_SEATS, holdSeconds: HOLD_SECONDS, showId });
-    }
+    const res = await pool.query(`SELECT ${VIEW} FROM show_seats WHERE show_id = $1 ORDER BY id`, [showId]);
+    rows = res.rows || [];
   } catch (err) {
     console.warn('[TheTicketRoom] show_seats query failed, attempting auto-heal:', err.message);
   }
 
-  // Attempt auto-seed and reload
-  const { initDb } = require('./init-db');
-  await initDb().catch(() => {});
-  const { rows } = await pool.query(`SELECT ${VIEW} FROM show_seats WHERE show_id = $1 ORDER BY id`, [showId]).catch(() => ({ rows: [] }));
-  res.json({ seats: rows, maxSeats: MAX_SEATS, holdSeconds: HOLD_SECONDS, showId });
+  if (!rows.length && allowLegacyView) {
+    try {
+      const legacy = await pool.query(
+        'SELECT id, row_label, seat_number, tier, price, status, held_by, hold_expires_at FROM seats ORDER BY id'
+      );
+      if (legacy.rows && legacy.rows.length > 0) {
+        rows = legacy.rows;
+        resolvedShowId = 1;
+      }
+    } catch {}
+  }
+
+  if (!rows.length) {
+    const { initDb } = require('./init-db');
+    await initDb().catch(() => {});
+    const res = await pool.query(`SELECT ${VIEW} FROM show_seats WHERE show_id = $1 ORDER BY id`, [showId]).catch(() => ({ rows: [] }));
+    rows = res.rows || [];
+  }
+
+  let ownedSeatIds = [];
+  if (userId) {
+    try {
+      const { rows: ownedRows } = await pool.query(
+        `SELECT s.id FROM show_seats s
+         JOIN bookings b ON b.id = s.booking_id
+         WHERE b.user_id = $1 AND s.show_id = $2 AND b.status = 'confirmed'
+         ORDER BY s.id`,
+        [userId, resolvedShowId]
+      );
+      ownedSeatIds = ownedRows.map((r) => r.id);
+    } catch {}
+  }
+
+  return {
+    seats: rows,
+    maxSeats: MAX_SEATS,
+    holdSeconds: HOLD_SECONDS,
+    showId: resolvedShowId,
+    ownedSeatIds,
+    ownedCount: ownedSeatIds.length,
+  };
+}
+
+// Get seats for a specific show (with auto-healing fallback)
+app.get('/api/shows/:showId/seats', optionalAuth, wrap(async (req, res) => {
+  const showId = Number(req.params.showId);
+  if (!Number.isInteger(showId)) throw new HttpError(400, 'VALIDATION', 'Invalid showId');
+  const payload = await fetchShowSeatsPayload(showId, req.user?.id, false);
+  res.json(payload);
 }));
 
 // Default legacy seats route (maps to Show 1 with auto-healing fallback)
 app.get('/api/seats', optionalAuth, wrap(async (req, res) => {
   const showId = Number(req.query.showId) || 1;
-  try {
-    const { rows } = await pool.query(`SELECT ${VIEW} FROM show_seats WHERE show_id = $1 ORDER BY id`, [showId]);
-    if (rows && rows.length > 0) {
-      return res.json({ seats: rows, maxSeats: MAX_SEATS, holdSeconds: HOLD_SECONDS, showId });
-    }
-  } catch (err) {
-    console.warn('[TheTicketRoom] show_seats query failed, attempting auto-heal:', err.message);
-  }
-
-  // Fallback to legacy seats view or auto-seed
-  try {
-    const { rows } = await pool.query('SELECT id, row_label, seat_number, tier, price, status, held_by, hold_expires_at FROM seats ORDER BY id');
-    if (rows && rows.length > 0) {
-      return res.json({ seats: rows, maxSeats: MAX_SEATS, holdSeconds: HOLD_SECONDS, showId: 1 });
-    }
-  } catch {}
-
-  const { initDb } = require('./init-db');
-  await initDb().catch(() => {});
-  const { rows } = await pool.query(`SELECT ${VIEW} FROM show_seats WHERE show_id = $1 ORDER BY id`, [showId]).catch(() => ({ rows: [] }));
-  res.json({ seats: rows, maxSeats: MAX_SEATS, holdSeconds: HOLD_SECONDS, showId });
+  const payload = await fetchShowSeatsPayload(showId, req.user?.id, true);
+  res.json(payload);
 }));
 
 // Core hold handler: locks user row first, locks requested seats in ascending ID order
@@ -266,8 +290,13 @@ async function executeHold({ uid, showId, requestedIds }) {
        WHERE b.user_id = $1 AND s.show_id = $2 AND b.status = 'confirmed'`,
       [uid, showId]
     );
-    if (owned + ids.length > MAX_SEATS)
-      throw new HttpError(400, 'MAX_SEATS', `You already have ${owned} booked seat(s). Maximum is ${MAX_SEATS} per user.`);
+    if (owned + ids.length > MAX_SEATS) {
+      const remaining = Math.max(0, MAX_SEATS - owned);
+      const msg = remaining === 0
+        ? `You already have ${owned}/${MAX_SEATS} booked seats (limit reached). Cancel a booking in My Bookings to free seats.`
+        : `You already have ${owned} booked seat(s) — you can select at most ${remaining} more (${MAX_SEATS} max per user).`;
+      throw new HttpError(400, 'MAX_SEATS', msg);
+    }
 
     // 3. Row locks are taken in ascending id order across requested seats and caller's prior holds
     const { rows: locked } = await c.query(

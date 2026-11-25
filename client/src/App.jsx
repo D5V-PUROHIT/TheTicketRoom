@@ -417,6 +417,7 @@ export default function App() {
                 notify={notify}
                 onOpenAuth={() => openAuth('login')}
                 onBack={() => setView('portal')}
+                onGoMyBookings={() => setView('mine')}
                 onSuccess={handleBookingSuccess}
               />
             )}
@@ -938,9 +939,9 @@ function MovieDetailsView({ movie, onBook, onBack }) {
 /* ==========================================================
    VIEW 3: THEATRE SEAT SELECTION & PHASE 4 CHECKOUT
    ========================================================== */
-function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth, onBack, onSuccess }) {
+function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth, onBack, onGoMyBookings, onSuccess }) {
   const [seats, setSeats] = useState({});
-  const [cfg, setCfg] = useState({ maxSeats: 4, holdSeconds: 120 });
+  const [cfg, setCfg] = useState({ maxSeats: 4, holdSeconds: 120, ownedSeatIds: [], ownedCount: 0 });
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [pulseIds, setPulseIds] = useState(new Set());
@@ -973,7 +974,7 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
           notify(e.message, 'err');
         }
       });
-  }, [notify]);
+  }, [notify, user?.id]);
 
   useEffect(() => {
     load();
@@ -993,6 +994,9 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
 
   const all = Object.values(seats).sort((a, b) => a.id - b.id);
   const mine = all.filter((s) => s.status === 'held' && s.held_by === user?.id);
+  const ownedCount = cfg.ownedCount || 0;
+  const ownedSet = new Set(cfg.ownedSeatIds || []);
+  const remainingLimit = Math.max(0, (cfg.maxSeats || 4) - ownedCount);
   const expiry = mine.length ? Math.min(...mine.map((s) => +new Date(s.hold_expires_at))) : 0;
   const left = Math.max(0, Math.ceil((expiry - now) / 1000));
 
@@ -1043,8 +1047,11 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
     if (busy) return;
     const ids = mine.map((m) => m.id);
     const next = ids.includes(s.id) ? ids.filter((i) => i !== s.id) : [...ids, s.id];
-    if (next.length > cfg.maxSeats) {
-      return notify(`Maximum ${cfg.maxSeats} seats allowed per customer`, 'err');
+    if (next.length > remainingLimit) {
+      const msg = remainingLimit === 0
+        ? `Limit reached (${ownedCount}/${cfg.maxSeats} seats already booked). Cancel an existing booking in My Bookings to free seats.`
+        : `You already have ${ownedCount} booked seat(s). You can select up to ${remainingLimit} more (${cfg.maxSeats} max per user).`;
+      return notify(msg, 'err');
     }
     setBusy(true);
     try {
@@ -1064,6 +1071,12 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
       return;
     }
     if (busy) return;
+    if (n > remainingLimit) {
+      const msg = remainingLimit === 0
+        ? `Limit reached (${ownedCount}/${cfg.maxSeats} booked). Cancel an existing booking in My Bookings first.`
+        : `Only ${remainingLimit} seat(s) left in your ${cfg.maxSeats}-seat account limit.`;
+      return notify(msg, 'err');
+    }
     const priorityRows = ['D', 'E', 'C', 'F', 'B', 'A', 'G', 'H', 'I', 'J'];
     let chosen = null;
 
@@ -1159,7 +1172,14 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
         <div className="theatre-top-right">
           <div className="hall-pill">
             <span>🎟️</span>
-            <span>{mine.length > 0 ? `${mine.length} Selected` : '4 Seats max'}</span>
+            {ownedCount > 0 ? (
+              <span>
+                {mine.length > 0 ? `${mine.length} Selected • ` : ''}
+                <b>{Math.max(0, remainingLimit - mine.length)} left</b> ({ownedCount}/{cfg.maxSeats} booked)
+              </span>
+            ) : (
+              <span>{mine.length > 0 ? `${mine.length} / ${cfg.maxSeats} Selected` : `${cfg.maxSeats} Seats max`}</span>
+            )}
           </div>
         </div>
       </div>
@@ -1176,6 +1196,49 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
         </div>
       </div>
 
+      {/* User Booked Quota Notice (when user already holds confirmed tickets on this show) */}
+      {user && ownedCount > 0 && (
+        <div
+          style={{
+            maxWidth: 820,
+            margin: '14px auto 0',
+            padding: '10px 16px',
+            borderRadius: 10,
+            background: remainingLimit === 0 ? 'var(--peach-soft)' : 'var(--accent-soft)',
+            border: `1px solid ${remainingLimit === 0 ? 'rgba(255,181,146,0.75)' : 'var(--accent-border)'}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 10,
+            fontSize: 12.5,
+            color: remainingLimit === 0 ? '#9a3412' : 'var(--ink)',
+          }}
+        >
+          <span>
+            {remainingLimit === 0 ? (
+              <>
+                <b>Seat Limit Reached ({ownedCount}/{cfg.maxSeats} booked):</b> Cancel an existing ticket in My Bookings to free seats.
+              </>
+            ) : (
+              <>
+                <b>Quota Status ({ownedCount}/{cfg.maxSeats} booked):</b> Your previously booked seats are highlighted in lavender — you can book up to <b>{remainingLimit} more seat{remainingLimit > 1 ? 's' : ''}</b>.
+              </>
+            )}
+          </span>
+          {onGoMyBookings && (
+            <button
+              type="button"
+              className="btn-ghost"
+              style={{ padding: '4px 12px', fontSize: 11.5, background: '#fff' }}
+              onClick={onGoMyBookings}
+            >
+              Manage My Bookings →
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Quick Select Best Contiguous Seats */}
       <div className="quick-pick-bar">
         <div className="qp-label">
@@ -1183,17 +1246,22 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
           <span>Quick Select:</span>
         </div>
         <div className="qp-btns">
-          {[1, 2, 3, 4].map((n) => (
-            <button
-              key={n}
-              type="button"
-              className="btn-qp"
-              disabled={busy}
-              onClick={() => quickPickSeats(n)}
-            >
-              {n === 1 ? '1 Seat' : `${n} Seats`}
-            </button>
-          ))}
+          {[1, 2, 3, 4].map((n) => {
+            const overQuota = user && n > remainingLimit;
+            return (
+              <button
+                key={n}
+                type="button"
+                className="btn-qp"
+                disabled={busy || overQuota}
+                style={overQuota ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+                title={overQuota ? `Only ${remainingLimit} seat(s) remaining in your ${cfg.maxSeats}-seat account limit` : undefined}
+                onClick={() => quickPickSeats(n)}
+              >
+                {n === 1 ? '1 Seat' : `${n} Seats`}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -1245,6 +1313,12 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
             <span className="leg-box"></span>
             <span>Available</span>
           </div>
+          {ownedCount > 0 && (
+            <div className="leg-item">
+              <span className="leg-box own-booked"></span>
+              <span>Your Booked</span>
+            </div>
+          )}
           <div className="leg-item">
             <span className="leg-box sold"></span>
             <span>Sold</span>
@@ -1360,8 +1434,9 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
     const isMine = s.status === 'held' && s.held_by === user?.id;
     const isPeerHeld = s.status === 'held' && s.held_by !== user?.id;
     const isSold = s.status === 'booked';
+    const isOwnBooked = isSold && ownedSet.has(s.id);
     const isBlocked = s.status === 'blocked';
-    const stClass = isMine ? 'mine' : isSold ? 'booked' : isBlocked ? 'sold' : isPeerHeld ? 'held' : 'avail';
+    const stClass = isMine ? 'mine' : isOwnBooked ? 'own-booked' : isSold ? 'booked' : isBlocked ? 'sold' : isPeerHeld ? 'held' : 'avail';
     const isPulsing = pulseIds.has(s.id);
 
     return (
@@ -1372,7 +1447,13 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
         className={`auditorium-seat ${stClass} ${isPulsing ? 'peer-pulse' : ''}`}
         disabled={isSold || isPeerHeld || isBlocked}
         onClick={() => pick(s)}
-        title={isBlocked ? `Seat ${s.row_label}${pad(s.seat_number)} • Reserved for Maintenance/VIP` : `Seat ${s.row_label}${pad(s.seat_number)} • ${inr(s.price)}`}
+        title={
+          isBlocked
+            ? `Seat ${s.row_label}${pad(s.seat_number)} • Reserved for Maintenance/VIP`
+            : isOwnBooked
+              ? `Seat ${s.row_label}${pad(s.seat_number)} • Already booked by you`
+              : `Seat ${s.row_label}${pad(s.seat_number)} • ${inr(s.price)}`
+        }
       >
         {isBlocked ? '✕' : pad(s.seat_number)}
       </button>
