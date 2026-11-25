@@ -11,7 +11,7 @@ A production-grade, real-time cinema ticket reservation and back-office platform
 Inspired by the energy and visual excitement of modern entertainment portals, transformed into an aesthetic pastel identity:
 - **Brand Identity & Color Palette**: Lavender (`#7c6cf0`), Blush (`#ff8fa3`), Peach (`#ffb592`), Mint (`#38c28f`), Ink (`#2b2742`), and Off-White (`#faf9ff`).
 - **Typography**: Display headings in **Bricolage Grotesque**; body copy in **DM Sans**.
-- **Hero Showcase**: Premiere banner featuring *Baahubali: The Beginning* (Friday, 28 November 2026 at 10:00 PM), rating chips (`★ 9.6/10`, `4K Laser`, `Dolby Atmos 7.1`, `U/A 13+`), duration, audio languages, and synopsis.
+- **Hero Showcase**: Premiere banner featuring *Baahubali: The Beginning* (Friday, 27 November 2026 at 10:00 PM), rating chips (`★ 9.6/10`, `4K Laser`, `Dolby Atmos 7.1`, `U/A 13+`), duration, audio languages, and synopsis.
 - **Curved Glowing Projection Screen**: Authentic cinema screen arc with ambient overhead light cone positioned over the seat canvas.
 - **Exact Hall Seating Layout (2-6-2 & Top Recliner Row)**:
   - **Row A (Top 10 Seats Full Width)**: VIP Recliner Loungers (₹350).

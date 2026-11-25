@@ -104,18 +104,18 @@ const priceFor = (tier) => (tier === 'recliner' ? 350 : tier === 'club' ? 250 : 
   }
 
   // 4. Populate Shows
-  // Show 1: Tonight's Main Show (Friday 28 November 2026, 10:00 PM) - Baahubali
+  // Show 1: Tonight's Main Show (Friday 27 November 2026, 10:00 PM) - Baahubali
   await pool.query(`
     INSERT INTO shows (id, movie_id, hall_id, starts_at, date_str, time_str, price_recliner, price_club, price_premium, status)
-    VALUES (1, 1, 1, '2026-11-28 22:00:00+05:30', 'Friday, 28 November, 2026', '10:00 PM', 350, 250, 180, 'open')
+    VALUES (1, 1, 1, '2026-11-27 22:00:00+05:30', 'Friday, 27 November, 2026', '10:00 PM', 350, 250, 180, 'open')
     ON CONFLICT (id) DO UPDATE SET
       movie_id = EXCLUDED.movie_id, date_str = EXCLUDED.date_str, time_str = EXCLUDED.time_str, status = 'open'
   `);
 
-  // Show 2: Early Evening Show (Friday 28 November 2026, 06:00 PM) - Ramayana
+  // Show 2: Early Evening Show (Friday 27 November 2026, 06:00 PM) - Ramayana
   await pool.query(`
     INSERT INTO shows (id, movie_id, hall_id, starts_at, date_str, time_str, price_recliner, price_club, price_premium, status)
-    VALUES (2, 2, 1, '2026-11-28 18:00:00+05:30', 'Friday, 28 November, 2026', '06:00 PM', 350, 250, 180, 'open')
+    VALUES (2, 2, 1, '2026-11-27 18:00:00+05:30', 'Friday, 27 November, 2026', '06:00 PM', 350, 250, 180, 'open')
     ON CONFLICT (id) DO UPDATE SET
       movie_id = EXCLUDED.movie_id, date_str = EXCLUDED.date_str, time_str = EXCLUDED.time_str, status = 'open'
   `);
@@ -228,7 +228,7 @@ const priceFor = (tier) => (tier === 'recliner' ? 350 : tier === 'club' ? 250 : 
     INSERT INTO screenings (title, date_str, time_str, poster_url, synopsis, genre, language, active)
     VALUES (
       'Baahubali: The Beginning',
-      'Friday, 28 November, 2026',
+      'Friday, 27 November, 2026',
       '10:00 PM',
       '/posters/bahubali.jpg',
       'In ancient Mahishmati, a daring young adventurer learns of his regal royal heritage and embarks on an epic quest to confront King Bhallaladeva and liberate his kingdom.',

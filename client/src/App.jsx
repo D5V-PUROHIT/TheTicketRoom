@@ -28,9 +28,61 @@ async function api(path, { method = 'GET', body, key } = {}) {
 const inr = (n) => '₹' + n;
 const pad = (n) => String(n).padStart(2, '0');
 
+// Date & time formatting helpers for interactive Calendar Pickers
+function formatDateWithDay(isoStr) {
+  if (!isoStr) return '';
+  const parts = isoStr.split('-').map(Number);
+  if (parts.length !== 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) return isoStr;
+  const [y, m, d] = parts;
+  const dt = new Date(y, m - 1, d);
+  const weekday = dt.toLocaleDateString('en-US', { weekday: 'long' });
+  const monthName = dt.toLocaleDateString('en-US', { month: 'long' });
+  return `${weekday}, ${d} ${monthName}, ${y}`;
+}
+
+function formatTime12h(time24) {
+  if (!time24) return '';
+  const [h, m] = time24.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return time24;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 || 12;
+  return `${String(hour12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+function dateStrToIso(str) {
+  if (!str) return '2026-11-27';
+  const months = {
+    january: '01', february: '02', march: '03', april: '04', may: '05', june: '06',
+    july: '07', august: '08', september: '09', october: '10', november: '11', december: '12',
+    jan: '01', feb: '02', mar: '03', apr: '04', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+  };
+  const m = str.match(/(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})/);
+  if (m) {
+    const day = m[1].padStart(2, '0');
+    const mon = months[m[2].toLowerCase()] || '11';
+    const yr = m[3];
+    return `${yr}-${mon}-${day}`;
+  }
+  return '2026-11-27';
+}
+
+function timeStrTo24h(str) {
+  if (!str) return '22:00';
+  const m = str.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (m) {
+    let h = parseInt(m[1], 10);
+    const min = m[2];
+    const ampm = m[3] ? m[3].toUpperCase() : '';
+    if (ampm === 'PM' && h < 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+    return `${String(h).padStart(2, '0')}:${min}`;
+  }
+  return '22:00';
+}
+
 const initialMovie = {
   title: 'Baahubali: The Beginning',
-  date_str: 'Friday, 28 November, 2026',
+  date_str: 'Friday, 27 November, 2026',
   time_str: '10:00 PM',
   poster_url: '/posters/bahubali.jpg',
   synopsis: 'In ancient Mahishmati, a daring young adventurer learns of his royal heritage and embarks on an epic quest to confront King Bhallaladeva and liberate his kingdom.',
@@ -52,7 +104,7 @@ const catalogueMovies = [
     votes: '112K',
     poster_url: '/poster-observatory.svg',
     time_str: '07:30 PM',
-    date_str: 'Friday, 28 November, 2026',
+    date_str: 'Friday, 27 November, 2026',
     synopsis: 'An epic adaptation of the ancient legend of courage, righteousness, and the triumph of truth.',
   },
   {
@@ -604,7 +656,7 @@ function MovieDetailsView({ movie, onBook, onBack }) {
               <div className="show-time-box">{movie.time_str || '10:00 PM'}</div>
               <div className="show-hall-desc">
                 <b>Galaxy Cinema • Hall 1</b>
-                <span>{movie.date_str || 'Friday, 28 November, 2026'} • Dolby Atmos 7.1</span>
+                <span>{movie.date_str || 'Friday, 27 November, 2026'} • Dolby Atmos 7.1</span>
               </div>
             </div>
 
@@ -1300,13 +1352,41 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
   const [searchQ, setSearchQ] = useState('');
   const [blockSeatIds, setBlockSeatIds] = useState('');
 
-  // Form for changing date & time of active movie
+  // Form for changing date & time of active movie with calendar picker support
+  const [calDate, setCalDate] = useState(() => dateStrToIso(movie.date_str));
+  const [calTime, setCalTime] = useState(() => timeStrTo24h(movie.time_str));
   const [schedForm, setSchedForm] = useState({
-    date_str: movie.date_str || 'Friday, 28 November, 2026',
+    date_str: movie.date_str || 'Friday, 27 November, 2026',
     time_str: movie.time_str || '10:00 PM',
   });
 
-  // Form for adding a new movie
+  // Keep calendar picker synchronized when movie updates
+  useEffect(() => {
+    if (movie.date_str) {
+      setSchedForm({
+        date_str: movie.date_str,
+        time_str: movie.time_str || '10:00 PM',
+      });
+      setCalDate(dateStrToIso(movie.date_str));
+      setCalTime(timeStrTo24h(movie.time_str));
+    }
+  }, [movie.date_str, movie.time_str]);
+
+  const onCalendarDateChange = (val) => {
+    setCalDate(val);
+    const formatted = formatDateWithDay(val);
+    setSchedForm((prev) => ({ ...prev, date_str: formatted }));
+  };
+
+  const onTimePickerChange = (val) => {
+    setCalTime(val);
+    const formatted = formatTime12h(val);
+    setSchedForm((prev) => ({ ...prev, time_str: formatted }));
+  };
+
+  // Form for adding a new movie with calendar premiere date
+  const [newMovieCalDate, setNewMovieCalDate] = useState('2026-11-27');
+  const [newMovieCalTime, setNewMovieCalTime] = useState('22:00');
   const [newMovieForm, setNewMovieForm] = useState({
     title: '',
     synopsis: '',
@@ -1316,6 +1396,8 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
     certificate: 'U/A 13+',
     runtime_mins: 159,
     cast_members: 'Lead Cast',
+    date_str: 'Friday, 27 November, 2026',
+    time_str: '10:00 PM',
   });
 
   // 1-Click Role Switcher for Assessment Verification
@@ -1399,14 +1481,20 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
     }
   };
 
-  // Add new movie
+  // Add new movie with optional premiere scheduling
   const handleAddNewMovie = async (e) => {
     e.preventDefault();
     if (!newMovieForm.title.trim()) return notify('Movie title is required', 'err');
     setBusy(true);
     try {
       const res = await api('/admin/movies', { method: 'POST', body: newMovieForm });
-      setMovie({ ...movie, ...res.movie });
+      if (newMovieForm.date_str && newMovieForm.time_str) {
+        await api('/admin/movies/schedule', {
+          method: 'PUT',
+          body: { date_str: newMovieForm.date_str, time_str: newMovieForm.time_str },
+        }).catch(() => {});
+      }
+      setMovie({ ...movie, ...res.movie, date_str: newMovieForm.date_str, time_str: newMovieForm.time_str });
       notify(`New movie published: ${res.movie.title}!`, 'ok');
       loadHistory();
     } catch (err) {
@@ -1472,6 +1560,210 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
       setBusy(false);
     }
   };
+
+  const renderChangeDateTimeCard = () => (
+    <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+      <div style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 4px', color: 'var(--ink)' }}>Change Date & Time</h3>
+        <p style={{ color: 'var(--mute)', fontSize: 12.5, margin: 0 }}>
+          Update the active showtime. Pushes immediately to all live clients.
+        </p>
+      </div>
+
+      <form onSubmit={handleUpdateSchedule}>
+        {/* Screening Date with Calendar Picker */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>Screening Date</label>
+            <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
+              📅 Calendar Picker
+            </span>
+          </div>
+
+          {/* Interactive Date Picker input */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+            <input
+              type="date"
+              aria-label="Screening calendar date"
+              value={calDate}
+              onChange={(e) => onCalendarDateChange(e.target.value)}
+              style={{
+                padding: '9px 12px',
+                border: '1.5px solid var(--accent)',
+                borderRadius: 8,
+                fontSize: 13.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: '#faf9ff',
+                color: 'var(--ink)',
+              }}
+            />
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: 'var(--accent-soft)', padding: '8px 12px', borderRadius: 8, fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
+              🗓️ Auto-computes day of week
+            </div>
+          </div>
+
+          {/* Formatted Date string input */}
+          <input
+            type="text"
+            required
+            placeholder="e.g. Friday, 27 November, 2026"
+            value={schedForm.date_str}
+            onChange={(e) => setSchedForm({ ...schedForm, date_str: e.target.value })}
+            style={{
+              width: '100%',
+              padding: '9px 12px',
+              border: '1px solid var(--line)',
+              borderRadius: 8,
+              fontSize: 13.5,
+              fontWeight: 600,
+              color: 'var(--ink)',
+            }}
+          />
+
+          {/* Date shortcut presets */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            <button
+              type="button"
+              className="btn-ghost"
+              style={{
+                fontSize: 11.5,
+                padding: '4px 9px',
+                borderRadius: 6,
+                background: calDate === '2026-11-27' ? 'var(--accent-soft)' : undefined,
+                color: calDate === '2026-11-27' ? 'var(--accent)' : undefined,
+                fontWeight: calDate === '2026-11-27' ? 700 : 500,
+              }}
+              onClick={() => onCalendarDateChange('2026-11-27')}
+            >
+              🌟 Friday, 27 Nov (Premiere)
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              style={{
+                fontSize: 11.5,
+                padding: '4px 9px',
+                borderRadius: 6,
+                background: calDate === '2026-11-28' ? 'var(--accent-soft)' : undefined,
+                color: calDate === '2026-11-28' ? 'var(--accent)' : undefined,
+                fontWeight: calDate === '2026-11-28' ? 700 : 500,
+              }}
+              onClick={() => onCalendarDateChange('2026-11-28')}
+            >
+              Saturday, 28 Nov
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              style={{
+                fontSize: 11.5,
+                padding: '4px 9px',
+                borderRadius: 6,
+                background: calDate === '2026-11-29' ? 'var(--accent-soft)' : undefined,
+                color: calDate === '2026-11-29' ? 'var(--accent)' : undefined,
+                fontWeight: calDate === '2026-11-29' ? 700 : 500,
+              }}
+              onClick={() => onCalendarDateChange('2026-11-29')}
+            >
+              Sunday, 29 Nov
+            </button>
+          </div>
+        </div>
+
+        {/* Showtime with Time Picker */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>Showtime</label>
+            <span style={{ fontSize: 12, color: 'var(--mint)', fontWeight: 600 }}>
+              ⏰ Time Picker
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <input
+              type="time"
+              aria-label="Showtime picker"
+              value={calTime}
+              onChange={(e) => onTimePickerChange(e.target.value)}
+              style={{
+                padding: '9px 12px',
+                border: '1.5px solid var(--accent)',
+                borderRadius: 8,
+                fontSize: 13.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: '#faf9ff',
+                color: 'var(--ink)',
+              }}
+            />
+            <input
+              type="text"
+              required
+              placeholder="e.g. 10:00 PM"
+              value={schedForm.time_str}
+              onChange={(e) => setSchedForm({ ...schedForm, time_str: e.target.value })}
+              style={{
+                flex: 1,
+                padding: '9px 12px',
+                border: '1px solid var(--line)',
+                borderRadius: 8,
+                fontSize: 13.5,
+                fontWeight: 600,
+                color: 'var(--ink)',
+              }}
+            />
+          </div>
+
+          {/* Showtime preset chips */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {['10:00 PM', '07:30 PM', '06:00 PM', '04:15 PM', '01:00 PM', '11:15 PM'].map((t) => (
+              <button
+                key={t}
+                type="button"
+                className="btn-ghost"
+                style={{
+                  fontSize: 11.5,
+                  padding: '3px 8px',
+                  borderRadius: 6,
+                  background: schedForm.time_str === t ? 'var(--mint-soft)' : undefined,
+                  color: schedForm.time_str === t ? 'var(--mint)' : undefined,
+                  fontWeight: schedForm.time_str === t ? 700 : 500,
+                }}
+                onClick={() => {
+                  setCalTime(timeStrTo24h(t));
+                  setSchedForm({ ...schedForm, time_str: t });
+                }}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Update Showtime & Date Green Button matching screenshot */}
+        <button
+          type="submit"
+          disabled={busy}
+          style={{
+            width: '100%',
+            padding: '12px 18px',
+            background: '#16a34a',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: 8,
+            fontSize: 14.5,
+            fontWeight: 700,
+            cursor: busy ? 'not-allowed' : 'pointer',
+            boxShadow: '0 2px 6px rgba(22, 163, 74, 0.25)',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          {busy ? 'Updating...' : 'Update Showtime & Date'}
+        </button>
+      </form>
+    </div>
+  );
 
   return (
     <div className="admin-wrap" style={{ maxWidth: 1120, margin: '24px auto', padding: '0 24px' }}>
@@ -1575,37 +1867,41 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
             </div>
           )}
 
-          {/* Live Recent Bookings Feed */}
-          <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 20, background: '#fff' }}>
-            <h3 style={{ fontSize: 16, marginBottom: 12 }}>⚡ Live Real-Time Bookings Feed</h3>
-            {s?.recent && s.recent.length > 0 ? (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
-                    <th style={{ padding: '8px' }}>Reference</th>
-                    <th style={{ padding: '8px' }}>Customer</th>
-                    <th style={{ padding: '8px' }}>Seats</th>
-                    <th style={{ padding: '8px' }}>Amount</th>
-                    <th style={{ padding: '8px' }}>Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {s.recent.map((b) => (
-                    <tr key={b.reference} style={{ borderBottom: '1px solid var(--line)' }}>
-                      <td style={{ padding: '9px 8px', fontWeight: 700, color: 'var(--accent)' }}>{b.reference}</td>
-                      <td style={{ padding: '9px 8px' }}>{b.email}</td>
-                      <td style={{ padding: '9px 8px' }}>{b.seats}</td>
-                      <td style={{ padding: '9px 8px', color: 'var(--mint)', fontWeight: 700 }}>{inr(b.total_price)}</td>
-                      <td style={{ padding: '9px 8px', color: 'var(--mute)', fontSize: 12 }}>
-                        {new Date(b.created_at).toLocaleTimeString()}
-                      </td>
+          {/* Active Screening Quick Action & Live Recent Bookings Feed */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 1fr', gap: 24 }}>
+            {renderChangeDateTimeCard()}
+
+            <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 20, background: '#fff' }}>
+              <h3 style={{ fontSize: 16, marginBottom: 12 }}>⚡ Live Real-Time Bookings Feed</h3>
+              {s?.recent && s.recent.length > 0 ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
+                      <th style={{ padding: '8px' }}>Reference</th>
+                      <th style={{ padding: '8px' }}>Customer</th>
+                      <th style={{ padding: '8px' }}>Seats</th>
+                      <th style={{ padding: '8px' }}>Amount</th>
+                      <th style={{ padding: '8px' }}>Time</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <p style={{ color: 'var(--mute)', padding: 14 }}>No bookings recorded yet in this session.</p>
-            )}
+                  </thead>
+                  <tbody>
+                    {s.recent.map((b) => (
+                      <tr key={b.reference} style={{ borderBottom: '1px solid var(--line)' }}>
+                        <td style={{ padding: '9px 8px', fontWeight: 700, color: 'var(--accent)' }}>{b.reference}</td>
+                        <td style={{ padding: '9px 8px' }}>{b.email}</td>
+                        <td style={{ padding: '9px 8px' }}>{b.seats}</td>
+                        <td style={{ padding: '9px 8px', color: 'var(--mint)', fontWeight: 700 }}>{inr(b.total_price)}</td>
+                        <td style={{ padding: '9px 8px', color: 'var(--mute)', fontSize: 12 }}>
+                          {new Date(b.created_at).toLocaleTimeString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p style={{ color: 'var(--mute)', padding: 14 }}>No bookings recorded yet in this session.</p>
+              )}
+            </div>
           </div>
         </>
       )}
@@ -1613,35 +1909,7 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
       {/* TAB 2: SHOWS & SEAT BLOCKING (Operations) */}
       {tab === 'shows' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24 }}>
-          {/* Active Screening & Change Date/Time */}
-          <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 20, background: '#fff' }}>
-            <h3 style={{ fontSize: 16, marginBottom: 14 }}>Active Screening Showtime</h3>
-            <form onSubmit={handleUpdateSchedule}>
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Date String</label>
-                <input
-                  type="text"
-                  required
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
-                  value={schedForm.date_str}
-                  onChange={(e) => setSchedForm({ ...schedForm, date_str: e.target.value })}
-                />
-              </div>
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Showtime String</label>
-                <input
-                  type="text"
-                  required
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
-                  value={schedForm.time_str}
-                  onChange={(e) => setSchedForm({ ...schedForm, time_str: e.target.value })}
-                />
-              </div>
-              <button type="submit" disabled={busy} className="btn-primary" style={{ width: '100%', padding: '10px' }}>
-                {busy ? 'Updating...' : 'Update Showtime & Broadcast'}
-              </button>
-            </form>
-          </div>
+          {renderChangeDateTimeCard()}
 
           {/* Seat Blocking Tool */}
           <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 20, background: '#fff' }}>
@@ -1746,6 +2014,119 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
                   value={newMovieForm.synopsis}
                   onChange={(e) => setNewMovieForm({ ...newMovieForm, synopsis: e.target.value })}
                 />
+              </div>
+
+              {/* Premiere Date (Calendar Picker) and Showtime Picker */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 16 }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600 }}>Premiere Date (Calendar Picker)</label>
+                    <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600 }}>📅 Calendar</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                    <input
+                      type="date"
+                      aria-label="New movie premiere calendar date"
+                      value={newMovieCalDate}
+                      onChange={(e) => {
+                        setNewMovieCalDate(e.target.value);
+                        setNewMovieForm((prev) => ({ ...prev, date_str: formatDateWithDay(e.target.value) }));
+                      }}
+                      style={{
+                        padding: '8px 10px',
+                        border: '1.5px solid var(--accent)',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        background: '#faf9ff',
+                        color: 'var(--ink)',
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="e.g. Friday, 27 November, 2026"
+                      value={newMovieForm.date_str}
+                      onChange={(e) => setNewMovieForm({ ...newMovieForm, date_str: e.target.value })}
+                      style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13, fontWeight: 600 }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      style={{ fontSize: 11, padding: '2px 7px' }}
+                      onClick={() => {
+                        setNewMovieCalDate('2026-11-27');
+                        setNewMovieForm((prev) => ({ ...prev, date_str: 'Friday, 27 November, 2026' }));
+                      }}
+                    >
+                      🌟 Friday, 27 Nov (Premiere)
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      style={{ fontSize: 11, padding: '2px 7px' }}
+                      onClick={() => {
+                        setNewMovieCalDate('2026-11-28');
+                        setNewMovieForm((prev) => ({ ...prev, date_str: 'Saturday, 28 November, 2026' }));
+                      }}
+                    >
+                      Saturday, 28 Nov
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600 }}>Premiere Showtime (Time Picker)</label>
+                    <span style={{ fontSize: 11, color: 'var(--mint)', fontWeight: 600 }}>⏰ Clock</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                    <input
+                      type="time"
+                      aria-label="New movie premiere time"
+                      value={newMovieCalTime}
+                      onChange={(e) => {
+                        setNewMovieCalTime(e.target.value);
+                        setNewMovieForm((prev) => ({ ...prev, time_str: formatTime12h(e.target.value) }));
+                      }}
+                      style={{
+                        padding: '8px 10px',
+                        border: '1.5px solid var(--accent)',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        background: '#faf9ff',
+                        color: 'var(--ink)',
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="e.g. 10:00 PM"
+                      value={newMovieForm.time_str}
+                      onChange={(e) => setNewMovieForm({ ...newMovieForm, time_str: e.target.value })}
+                      style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13, fontWeight: 600 }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {['10:00 PM', '07:30 PM', '06:00 PM', '04:15 PM'].map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className="btn-ghost"
+                        style={{ fontSize: 11, padding: '2px 7px' }}
+                        onClick={() => {
+                          setNewMovieCalTime(timeStrTo24h(t));
+                          setNewMovieForm((prev) => ({ ...prev, time_str: t }));
+                        }}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <button type="submit" disabled={busy} className="btn-primary" style={{ padding: '10px 20px' }}>

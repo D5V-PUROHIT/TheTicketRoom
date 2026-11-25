@@ -169,7 +169,7 @@ app.get('/api/shows', wrap(async (req, res) => {
 // Single active movie endpoint for backward compatibility
 const defaultMovie = {
   title: 'Baahubali: The Beginning',
-  date_str: 'Friday, 28 November, 2026',
+  date_str: 'Friday, 27 November, 2026',
   time_str: '10:00 PM',
   poster_url: '/posters/bahubali.jpg',
   synopsis: 'In ancient Mahishmati, a daring young adventurer learns of his royal heritage and embarks on an epic quest to confront King Bhallaladeva and liberate his kingdom.',
