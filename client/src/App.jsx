@@ -1739,10 +1739,16 @@ function TicketPassCard({ booking, movie, onCancel }) {
    VIEW 6: UNIFIED ADMIN DASHBOARD
    ========================================================== */
 function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, notify }) {
+  const [tab, setTab] = useState('overview'); // overview, shows, catalogue, support, finance, audit
   const [s, setS] = useState(null);
   const [showsList, setShowsList] = useState([]);
   const [selectedShowId, setSelectedShowId] = useState(1);
   const [history, setHistory] = useState([]);
+  const [supportBookings, setSupportBookings] = useState([]);
+  const [financeSummary, setFinanceSummary] = useState(null);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [usersList, setUsersList] = useState([]);
+  const [searchQ, setSearchQ] = useState('');
   const [busy, setBusy] = useState(false);
 
   // Form for changing date & time of selected show (only allowed when 0 bookings exist)
@@ -1813,9 +1819,33 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
     api('/admin/movies').then((d) => setHistory(d.movies || [])).catch(() => {});
   }, []);
 
+  const loadSupportBookings = useCallback((q = '') => {
+    api(`/admin/bookings${q ? `?q=${encodeURIComponent(q)}` : ''}`)
+      .then((d) => setSupportBookings(d.bookings || []))
+      .catch((e) => notify(e.message, 'err'));
+  }, [notify]);
+
+  const loadFinance = useCallback(() => {
+    api('/admin/finance/summary')
+      .then(setFinanceSummary)
+      .catch((e) => notify(e.message, 'err'));
+  }, [notify]);
+
+  const loadAudit = useCallback(() => {
+    api('/admin/audit-logs')
+      .then((d) => setAuditLogs(d.logs || []))
+      .catch((e) => notify(e.message, 'err'));
+    api('/admin/users')
+      .then((d) => setUsersList(d.users || []))
+      .catch(() => {});
+  }, [notify]);
+
   useEffect(() => {
     loadStats();
     loadHistory();
+    if (tab === 'support') loadSupportBookings(searchQ);
+    if (tab === 'finance') loadFinance();
+    if (tab === 'audit') loadAudit();
 
     if (!socket) return;
     let t;
@@ -1830,7 +1860,62 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
       socket.off('shows:update', h);
       clearTimeout(t);
     };
-  }, [socket, loadStats, loadHistory]);
+  }, [socket, tab, searchQ, loadStats, loadHistory, loadSupportBookings, loadFinance, loadAudit]);
+
+  const handleSupportCancel = async (bookingId) => {
+    const reason = window.prompt('Enter mandatory cancellation reason for audit log:');
+    if (!reason || !reason.trim()) return notify('Cancellation aborted: reason is required', 'warn');
+    setBusy(true);
+    try {
+      await api(`/admin/bookings/${bookingId}/cancel`, {
+        method: 'POST',
+        body: { reason: reason.trim() },
+      });
+      notify('Booking cancelled and refund issued via support', 'ok');
+      loadSupportBookings(searchQ);
+      loadStats();
+    } catch (err) {
+      notify(err.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleToggleSuspendUser = async (u) => {
+    setBusy(true);
+    try {
+      await api(`/admin/users/${u.id}/suspend`, {
+        method: 'PUT',
+        body: { suspended: !u.is_suspended, reason: 'Abuse protection / policy violation' },
+      });
+      notify(`User ${u.email} ${!u.is_suspended ? 'suspended' : 're-activated'}`, 'ok');
+      loadAudit();
+    } catch (err) {
+      notify(err.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDownloadFinanceCsv = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const r = await fetch('/api/admin/finance/export', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error('Unable to download CSV export');
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'theticketroom-finance-report.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      notify('Finance CSV downloaded', 'ok');
+    } catch (err) {
+      notify(err.message, 'err');
+    }
+  };
 
   // Update schedule of selected show (strictly blocked by server & UI if booked > 0)
   const handleUpdateSchedule = async (e) => {
@@ -2214,244 +2299,519 @@ function AdminDashboardView({ user, socket, movie, setMovie, onAddUpcoming, noti
   return (
     <div className="admin-wrap" style={{ maxWidth: 1140, margin: '24px auto', padding: '0 24px' }}>
       {/* Header */}
-      <div style={{ marginBottom: 22 }}>
+      <div style={{ marginBottom: 18 }}>
         <h2 style={{ fontSize: 24, fontWeight: 800, color: 'var(--ink)', marginBottom: 4 }}>Admin Dashboard</h2>
         <p style={{ color: 'var(--mute)', fontSize: 13, margin: 0 }}>
           Active session: <b>{user.email}</b>
         </p>
       </div>
 
-      {/* KPI Stats Summary */}
-      {s && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14, marginBottom: 24 }}>
-          <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
-            <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--mint)' }}>{s.available}</div>
-            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Available Seats</div>
+      {/* Internal Dashboard Tabs */}
+      <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid var(--line)', paddingBottom: 12, marginBottom: 24, overflowX: 'auto' }}>
+        <button
+          className={tab === 'overview' ? 'btn-primary' : 'btn-ghost'}
+          style={{ fontSize: 13, padding: '7px 16px', whiteSpace: 'nowrap' }}
+          onClick={() => setTab('overview')}
+        >
+          📊 Live Monitoring & KPIs
+        </button>
+        <button
+          className={tab === 'shows' ? 'btn-primary' : 'btn-ghost'}
+          style={{ fontSize: 13, padding: '7px 16px', whiteSpace: 'nowrap' }}
+          onClick={() => setTab('shows')}
+        >
+          🎬 Shows & Schedule
+        </button>
+        <button
+          className={tab === 'catalogue' ? 'btn-primary' : 'btn-ghost'}
+          style={{ fontSize: 13, padding: '7px 16px', whiteSpace: 'nowrap' }}
+          onClick={() => setTab('catalogue')}
+        >
+          🎞️ Movie Catalogue
+        </button>
+        <button
+          className={tab === 'support' ? 'btn-primary' : 'btn-ghost'}
+          style={{ fontSize: 13, padding: '7px 16px', whiteSpace: 'nowrap' }}
+          onClick={() => setTab('support')}
+        >
+          🎧 Customer Support
+        </button>
+        <button
+          className={tab === 'finance' ? 'btn-primary' : 'btn-ghost'}
+          style={{ fontSize: 13, padding: '7px 16px', whiteSpace: 'nowrap' }}
+          onClick={() => setTab('finance')}
+        >
+          💼 Finance & Reports
+        </button>
+        <button
+          className={tab === 'audit' ? 'btn-primary' : 'btn-ghost'}
+          style={{ fontSize: 13, padding: '7px 16px', whiteSpace: 'nowrap' }}
+          onClick={() => setTab('audit')}
+        >
+          🛡️ Audit Log & Moderation
+        </button>
+      </div>
+
+      {/* TAB 1: LIVE MONITORING & KPIs */}
+      {tab === 'overview' && (
+        <>
+          {s && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14, marginBottom: 24 }}>
+              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--mint)' }}>{s.available}</div>
+                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Available Seats</div>
+              </div>
+              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--peach)' }}>{s.held}</div>
+                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Held (2-Min Live)</div>
+              </div>
+              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: '#e11d48' }}>{s.booked}</div>
+                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Confirmed Booked</div>
+              </div>
+              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--ink)' }}>{inr(s.revenue)}</div>
+                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Total Revenue</div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 1fr', gap: 24, marginBottom: 24 }}>
+            {renderChangeDateTimeCard()}
+
+            {/* Live Recent Bookings Feed */}
+            <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 20, background: '#fff' }}>
+              <h3 style={{ fontSize: 16, marginBottom: 12 }}>⚡ Live Real-Time Bookings Feed</h3>
+              {s?.recent && s.recent.length > 0 ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
+                      <th style={{ padding: '8px' }}>Reference</th>
+                      <th style={{ padding: '8px' }}>Customer</th>
+                      <th style={{ padding: '8px' }}>Seats</th>
+                      <th style={{ padding: '8px' }}>Amount</th>
+                      <th style={{ padding: '8px' }}>Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {s.recent.map((b) => (
+                      <tr key={b.reference} style={{ borderBottom: '1px solid var(--line)' }}>
+                        <td style={{ padding: '9px 8px', fontWeight: 700, color: 'var(--accent)' }}>{b.reference}</td>
+                        <td style={{ padding: '9px 8px' }}>{b.email}</td>
+                        <td style={{ padding: '9px 8px' }}>{b.seats}</td>
+                        <td style={{ padding: '9px 8px', color: 'var(--mint)', fontWeight: 700 }}>{inr(b.total_price)}</td>
+                        <td style={{ padding: '9px 8px', color: 'var(--mute)', fontSize: 12 }}>
+                          {new Date(b.created_at).toLocaleTimeString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p style={{ color: 'var(--mute)', padding: 14 }}>No bookings recorded yet in this session.</p>
+              )}
+            </div>
           </div>
-          <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
-            <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--peach)' }}>{s.held}</div>
-            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Held (2-Min Live)</div>
-          </div>
-          <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
-            <div style={{ fontSize: 28, fontWeight: 800, color: '#e11d48' }}>{s.booked}</div>
-            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Confirmed Booked</div>
-          </div>
-          <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
-            <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--ink)' }}>{inr(s.revenue)}</div>
-            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Total Revenue</div>
-          </div>
-        </div>
+        </>
       )}
 
-      {/* Main Controls Row: Change Date & Time + Live Recent Bookings Feed */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 1fr', gap: 24, marginBottom: 24 }}>
-        {renderChangeDateTimeCard()}
+      {/* TAB 2: SHOWS & SCHEDULE */}
+      {tab === 'shows' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 1fr', gap: 24, marginBottom: 24 }}>
+          {renderChangeDateTimeCard()}
 
-        {/* Live Recent Bookings Feed */}
-        <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 20, background: '#fff' }}>
-          <h3 style={{ fontSize: 16, marginBottom: 12 }}>⚡ Live Real-Time Bookings Feed</h3>
-          {s?.recent && s.recent.length > 0 ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff' }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>All Scheduled Screenings ({showsList.length})</h3>
+            <p style={{ color: 'var(--mute)', fontSize: 12.5, marginBottom: 14 }}>
+              Shows with booked tickets are locked against schedule edits or cancellation.
+            </p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
-                  <th style={{ padding: '8px' }}>Reference</th>
-                  <th style={{ padding: '8px' }}>Customer</th>
-                  <th style={{ padding: '8px' }}>Seats</th>
-                  <th style={{ padding: '8px' }}>Amount</th>
-                  <th style={{ padding: '8px' }}>Time</th>
+                  <th style={{ padding: '8px 6px' }}>Show</th>
+                  <th style={{ padding: '8px 6px' }}>Date & Time</th>
+                  <th style={{ padding: '8px 6px' }}>Booked</th>
+                  <th style={{ padding: '8px 6px' }}>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {s.recent.map((b) => (
-                  <tr key={b.reference} style={{ borderBottom: '1px solid var(--line)' }}>
-                    <td style={{ padding: '9px 8px', fontWeight: 700, color: 'var(--accent)' }}>{b.reference}</td>
-                    <td style={{ padding: '9px 8px' }}>{b.email}</td>
-                    <td style={{ padding: '9px 8px' }}>{b.seats}</td>
-                    <td style={{ padding: '9px 8px', color: 'var(--mint)', fontWeight: 700 }}>{inr(b.total_price)}</td>
-                    <td style={{ padding: '9px 8px', color: 'var(--mute)', fontSize: 12 }}>
-                      {new Date(b.created_at).toLocaleTimeString()}
+                {showsList.map((sh) => (
+                  <tr key={sh.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                    <td style={{ padding: '8px 6px' }}><b>#{sh.id} {sh.movie_title}</b></td>
+                    <td style={{ padding: '8px 6px' }}>{sh.date_str} • {sh.time_str}</td>
+                    <td style={{ padding: '8px 6px', fontWeight: 700, color: sh.booked_count > 0 ? '#e11d48' : 'var(--mint)' }}>
+                      {sh.booked_count} / 100
+                    </td>
+                    <td style={{ padding: '8px 6px' }}>
+                      <span style={{
+                        padding: '2px 8px',
+                        borderRadius: 4,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        background: sh.status === 'open' ? 'var(--mint-soft)' : sh.status === 'cancelled' ? '#fee2e2' : 'var(--accent-soft)',
+                        color: sh.status === 'open' ? 'var(--mint)' : sh.status === 'cancelled' ? '#dc2626' : 'var(--accent)',
+                      }}>
+                        {sh.status}
+                      </span>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          ) : (
-            <p style={{ color: 'var(--mute)', padding: 14 }}>No bookings recorded yet in this session.</p>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Add Movie to Catalogue Form */}
-      <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff', marginBottom: 24 }}>
-          <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>Add Movie to Catalogue</h3>
-          <p style={{ color: 'var(--mute)', fontSize: 12.5, marginBottom: 16 }}>
-            Publish a new movie title to the theatre catalogue.
-          </p>
-          <form onSubmit={handleAddNewMovie}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 12 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Title</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Ramayana - Part 2"
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
-                  value={newMovieForm.title}
-                  onChange={(e) => setNewMovieForm({ ...newMovieForm, title: e.target.value })}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Poster URL</label>
-                <input
-                  type="text"
-                  placeholder="/poster-chronos.svg"
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
-                  value={newMovieForm.poster_url}
-                  onChange={(e) => setNewMovieForm({ ...newMovieForm, poster_url: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 12 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Genres</label>
-                <input
-                  type="text"
-                  placeholder="Action • Epic • Drama"
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
-                  value={newMovieForm.genres}
-                  onChange={(e) => setNewMovieForm({ ...newMovieForm, genres: e.target.value })}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Language</label>
-                <input
-                  type="text"
-                  placeholder="Hindi, Telugu"
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
-                  value={newMovieForm.language}
-                  onChange={(e) => setNewMovieForm({ ...newMovieForm, language: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Synopsis</label>
-              <textarea
-                rows={2}
-                placeholder="Plot summary..."
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6, font: 'inherit', fontSize: 13 }}
-                value={newMovieForm.synopsis}
-                onChange={(e) => setNewMovieForm({ ...newMovieForm, synopsis: e.target.value })}
-              />
-            </div>
-
-            {/* Premiere Date and Showtime */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 16 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Premiere Date</label>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    type="date"
-                    aria-label="New movie premiere date"
-                    value={newMovieCalDate}
-                    onChange={(e) => {
-                      setNewMovieCalDate(e.target.value);
-                      setNewMovieForm((prev) => ({ ...prev, date_str: formatDateWithDay(e.target.value) }));
-                    }}
-                    style={{
-                      padding: '8px 10px',
-                      border: '1.5px solid var(--accent)',
-                      borderRadius: 6,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      background: '#faf9ff',
-                      color: 'var(--ink)',
-                    }}
-                  />
+      {/* TAB 3: MOVIE CATALOGUE */}
+      {tab === 'catalogue' && (
+        <>
+          <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff', marginBottom: 24 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>Add Movie to Catalogue</h3>
+            <p style={{ color: 'var(--mute)', fontSize: 12.5, marginBottom: 16 }}>
+              Publish a new upcoming movie title to the theatre catalogue.
+            </p>
+            <form onSubmit={handleAddNewMovie}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Title</label>
                   <input
                     type="text"
-                    placeholder="e.g. Friday, 27 November, 2026"
-                    value={newMovieForm.date_str}
-                    onChange={(e) => setNewMovieForm({ ...newMovieForm, date_str: e.target.value })}
-                    style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13, fontWeight: 600 }}
+                    required
+                    placeholder="e.g. Baahubali 2: The Conclusion"
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
+                    value={newMovieForm.title}
+                    onChange={(e) => setNewMovieForm({ ...newMovieForm, title: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Poster URL</label>
+                  <input
+                    type="text"
+                    placeholder="/posters/bahubali.jpg"
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
+                    value={newMovieForm.poster_url}
+                    onChange={(e) => setNewMovieForm({ ...newMovieForm, poster_url: e.target.value })}
                   />
                 </div>
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Premiere Showtime</label>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    type="time"
-                    aria-label="New movie premiere showtime"
-                    value={newMovieCalTime}
-                    onChange={(e) => {
-                      setNewMovieCalTime(e.target.value);
-                      setNewMovieForm((prev) => ({ ...prev, time_str: formatTime12h(e.target.value) }));
-                    }}
-                    style={{
-                      padding: '8px 10px',
-                      border: '1.5px solid var(--accent)',
-                      borderRadius: 6,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      background: '#faf9ff',
-                      color: 'var(--ink)',
-                    }}
-                  />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Genres</label>
                   <input
                     type="text"
-                    placeholder="e.g. 10:00 PM"
-                    value={newMovieForm.time_str}
-                    onChange={(e) => setNewMovieForm({ ...newMovieForm, time_str: e.target.value })}
-                    style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13, fontWeight: 600 }}
+                    placeholder="Action • Epic • Drama"
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
+                    value={newMovieForm.genres}
+                    onChange={(e) => setNewMovieForm({ ...newMovieForm, genres: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Language</label>
+                  <input
+                    type="text"
+                    placeholder="Hindi, Telugu"
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
+                    value={newMovieForm.language}
+                    onChange={(e) => setNewMovieForm({ ...newMovieForm, language: e.target.value })}
                   />
                 </div>
               </div>
-            </div>
 
-            <button type="submit" disabled={busy} className="btn-primary" style={{ padding: '10px 22px' }}>
-              {busy ? 'Publishing...' : 'Publish Movie'}
-            </button>
-          </form>
-        </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Synopsis</label>
+                <textarea
+                  rows={2}
+                  placeholder="Plot summary..."
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6, font: 'inherit', fontSize: 13 }}
+                  value={newMovieForm.synopsis}
+                  onChange={(e) => setNewMovieForm({ ...newMovieForm, synopsis: e.target.value })}
+                />
+              </div>
 
-      {/* Movies in Database (Catalogue) Table */}
-      <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff', marginBottom: 24 }}>
-        <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Movies in Database ({history.length})</h3>
-        <p style={{ color: 'var(--mute)', fontSize: 12.5, marginBottom: 14 }}>
-          Previous and current movies stored in the cinema catalogue.
-        </p>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
-              <th style={{ padding: '9px 8px' }}>ID</th>
-              <th style={{ padding: '9px 8px' }}>Title</th>
-              <th style={{ padding: '9px 8px' }}>Language</th>
-              <th style={{ padding: '9px 8px' }}>Certificate</th>
-              <th style={{ padding: '9px 8px' }}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((m) => (
-              <tr key={m.id} style={{ borderBottom: '1px solid var(--line)' }}>
-                <td style={{ padding: '9px 8px' }}>#{m.id}</td>
-                <td style={{ padding: '9px 8px' }}><b>{m.title}</b></td>
-                <td style={{ padding: '9px 8px' }}>{m.language}</td>
-                <td style={{ padding: '9px 8px' }}>{m.certificate}</td>
-                <td style={{ padding: '9px 8px' }}>
-                  <span style={{ background: 'var(--mint-soft)', color: 'var(--mint)', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                    {m.status || 'Active'}
-                  </span>
-                </td>
+              {/* Premiere Date and Showtime */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Premiere Date</label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                      type="date"
+                      aria-label="New movie premiere date"
+                      value={newMovieCalDate}
+                      onChange={(e) => {
+                        setNewMovieCalDate(e.target.value);
+                        setNewMovieForm((prev) => ({ ...prev, date_str: formatDateWithDay(e.target.value) }));
+                      }}
+                      style={{
+                        padding: '8px 10px',
+                        border: '1.5px solid var(--accent)',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        background: '#faf9ff',
+                        color: 'var(--ink)',
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="e.g. Friday, 4 December, 2026"
+                      value={newMovieForm.date_str}
+                      onChange={(e) => setNewMovieForm({ ...newMovieForm, date_str: e.target.value })}
+                      style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13, fontWeight: 600 }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Premiere Showtime</label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                      type="time"
+                      aria-label="New movie premiere showtime"
+                      value={newMovieCalTime}
+                      onChange={(e) => {
+                        setNewMovieCalTime(e.target.value);
+                        setNewMovieForm((prev) => ({ ...prev, time_str: formatTime12h(e.target.value) }));
+                      }}
+                      style={{
+                        padding: '8px 10px',
+                        border: '1.5px solid var(--accent)',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        background: '#faf9ff',
+                        color: 'var(--ink)',
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="e.g. 08:00 PM"
+                      value={newMovieForm.time_str}
+                      onChange={(e) => setNewMovieForm({ ...newMovieForm, time_str: e.target.value })}
+                      style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13, fontWeight: 600 }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <button type="submit" disabled={busy} className="btn-primary" style={{ padding: '10px 22px' }}>
+                {busy ? 'Publishing...' : 'Publish Movie'}
+              </button>
+            </form>
+          </div>
+
+          {/* Movies in Database (Catalogue) Table */}
+          <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff', marginBottom: 24 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Movies in Database ({history.length})</h3>
+            <p style={{ color: 'var(--mute)', fontSize: 12.5, marginBottom: 14 }}>
+              Previous and current movies stored in the cinema catalogue.
+            </p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
+                  <th style={{ padding: '9px 8px' }}>ID</th>
+                  <th style={{ padding: '9px 8px' }}>Title</th>
+                  <th style={{ padding: '9px 8px' }}>Language</th>
+                  <th style={{ padding: '9px 8px' }}>Certificate</th>
+                  <th style={{ padding: '9px 8px' }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((m) => (
+                  <tr key={m.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                    <td style={{ padding: '9px 8px' }}>#{m.id}</td>
+                    <td style={{ padding: '9px 8px' }}><b>{m.title}</b></td>
+                    <td style={{ padding: '9px 8px' }}>{m.language}</td>
+                    <td style={{ padding: '9px 8px' }}>{m.certificate}</td>
+                    <td style={{ padding: '9px 8px' }}>
+                      <span style={{ background: 'var(--mint-soft)', color: 'var(--mint)', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                        {m.status || 'Active'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* TAB 4: CUSTOMER SUPPORT */}
+      {tab === 'support' && (
+        <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff', marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700 }}>Booking Lookup & Refund Desk</h3>
+            <input
+              type="text"
+              placeholder="Search by Reference (CX...) or Email"
+              value={searchQ}
+              onChange={(e) => { setSearchQ(e.target.value); loadSupportBookings(e.target.value); }}
+              style={{ padding: '8px 12px', fontSize: 13, border: '1px solid var(--line)', borderRadius: 6, width: 260 }}
+            />
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
+                <th style={{ padding: '8px' }}>Reference</th>
+                <th style={{ padding: '8px' }}>Customer</th>
+                <th style={{ padding: '8px' }}>Showtime</th>
+                <th style={{ padding: '8px' }}>Seats</th>
+                <th style={{ padding: '8px' }}>Total Paid</th>
+                <th style={{ padding: '8px' }}>Status</th>
+                <th style={{ padding: '8px' }}>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {supportBookings.map((b) => (
+                <tr key={b.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                  <td style={{ padding: '8px', fontWeight: 700, color: 'var(--accent)' }}>{b.reference}</td>
+                  <td style={{ padding: '8px' }}>{b.email || 'Customer'}</td>
+                  <td style={{ padding: '8px', fontSize: 12 }}>{b.show_time_str || 'Show #' + b.show_id}</td>
+                  <td style={{ padding: '8px' }}>{b.seats?.map((seat) => seat.label).join(', ')}</td>
+                  <td style={{ padding: '8px', color: 'var(--mint)', fontWeight: 700 }}>{inr(b.total_price)}</td>
+                  <td style={{ padding: '8px' }}>
+                    <span style={{
+                      background: b.status === 'confirmed' ? 'var(--mint-soft)' : '#fee2e2',
+                      color: b.status === 'confirmed' ? 'var(--mint)' : '#dc2626',
+                      padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700,
+                    }}>
+                      {b.status}
+                    </span>
+                  </td>
+                  <td style={{ padding: '8px' }}>
+                    {b.status === 'confirmed' && (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        style={{ padding: '4px 10px', fontSize: 11, borderColor: '#f87171', color: '#dc2626' }}
+                        onClick={() => handleSupportCancel(b.id)}
+                      >
+                        Refund & Cancel
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* TAB 5: FINANCE & REPORTS */}
+      {tab === 'finance' && (
+        <div>
+          {financeSummary && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
+              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+                <div style={{ fontSize: 24, fontWeight: 800 }}>{inr(financeSummary.totals?.gross_revenue || 0)}</div>
+                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Gross Ticket Revenue</div>
+              </div>
+              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+                <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--mint)' }}>{inr(financeSummary.totals?.total_discounts || 0)}</div>
+                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Promo Discounts</div>
+              </div>
+              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+                <div style={{ fontSize: 24, fontWeight: 800 }}>{inr(financeSummary.totals?.total_convenience_fees || 0)}</div>
+                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Convenience Fees</div>
+              </div>
+              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+                <div style={{ fontSize: 24, fontWeight: 800 }}>{inr(financeSummary.totals?.total_gst || 0)}</div>
+                <div style={{ fontSize: 12, color: 'var(--mute)' }}>GST Collected (18%)</div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff', marginBottom: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+              <h3 style={{ fontSize: 16 }}>Financial Reconciliation & CSV Export</h3>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ padding: '8px 18px', fontSize: 13 }}
+                onClick={handleDownloadFinanceCsv}
+              >
+                📥 Download CSV Export for Accountants
+              </button>
+            </div>
+            <p style={{ color: 'var(--mute)', fontSize: 13 }}>
+              Generate complete accounting ledgers with reference IDs, movie titles, subtotal, discount, GST, and gateway settlement timestamps.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 6: AUDIT LOG & MODERATION */}
+      {tab === 'audit' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24, marginBottom: 24 }}>
+          <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 20, background: '#fff' }}>
+            <h3 style={{ fontSize: 16, marginBottom: 12 }}>Append-Only Security Audit Trail</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
+                  <th style={{ padding: 6 }}>Action</th>
+                  <th style={{ padding: 6 }}>Admin</th>
+                  <th style={{ padding: 6 }}>Reason</th>
+                  <th style={{ padding: 6 }}>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditLogs.map((a) => (
+                  <tr key={a.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                    <td style={{ padding: 6, fontWeight: 700 }}>{a.action}</td>
+                    <td style={{ padding: 6 }}>{a.admin_email || 'System'}</td>
+                    <td style={{ padding: 6, color: 'var(--mute)' }}>{a.reason || 'N/A'}</td>
+                    <td style={{ padding: 6, color: '#888' }}>{new Date(a.created_at).toLocaleTimeString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 20, background: '#fff' }}>
+            <h3 style={{ fontSize: 16, marginBottom: 12 }}>Customer Accounts & Moderation</h3>
+            <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
+                    <th style={{ padding: 6 }}>User</th>
+                    <th style={{ padding: 6 }}>Bookings</th>
+                    <th style={{ padding: 6 }}>Status</th>
+                    <th style={{ padding: 6 }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usersList.slice(0, 30).map((u) => (
+                    <tr key={u.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                      <td style={{ padding: 6 }}>{u.email}</td>
+                      <td style={{ padding: 6 }}>{u.bookings_count}</td>
+                      <td style={{ padding: 6 }}>
+                        {u.is_suspended ? (
+                          <span style={{ color: '#dc2626', fontWeight: 700 }}>Suspended</span>
+                        ) : (
+                          <span style={{ color: 'var(--mint)', fontWeight: 700 }}>Active</span>
+                        )}
+                      </td>
+                      <td style={{ padding: 6 }}>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          style={{ padding: '2px 8px', fontSize: 10.5 }}
+                          onClick={() => handleToggleSuspendUser(u)}
+                        >
+                          {u.is_suspended ? 'Unsuspend' : 'Suspend'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
