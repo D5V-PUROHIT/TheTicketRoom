@@ -1,13 +1,13 @@
-// Frontend pricing & GST breakdown matching backend/services/gstAndPricingService.js exactly.
+// Frontend pricing & CGST/SGST breakdown matching backend/services/gstAndPricingService.js exactly.
 // Effective Sept 22, 2025:
-// - Ticket price <= Rs.100 -> 5% GST (2.5% CGST + 2.5% SGST)
-// - Ticket price > Rs.100 -> 18% GST (9% CGST + 9% SGST)
-// - Convenience fee (Rs.20) -> 18% GST
+// - Ticket price <= Rs.100 -> 5% (2.5% CGST + 2.5% SGST)
+// - Ticket price > Rs.100 -> 18% (9% CGST + 9% SGST)
+// - Platform Fee (Rs.20 flat, no extra GST)
 
 export function calculateClientPricing(seats = [], discountAmount = 0) {
   const subtotal = seats.reduce((sum, seat) => sum + Number(seat.price || 0), 0);
   const appliedDiscount = Math.min(Math.max(0, Number(discountAmount || 0)), subtotal);
-  const convenienceFee = seats.length > 0 ? 20 : 0;
+  const platformFee = seats.length > 0 ? 20 : 0;
 
   let ticketGstExact = 0;
   let ticketCgstExact = 0;
@@ -25,31 +25,25 @@ export function calculateClientPricing(seats = [], discountAmount = 0) {
     ticketSgstExact += seat.price * (rate / 2);
   }
 
-  const ticketGst = Math.round(ticketGstExact);
-  const convenienceFeeGst = Math.round(convenienceFee * 0.18);
-  const gstAmount = ticketGst + convenienceFeeGst;
+  const gstAmount = Math.round(ticketGstExact);
+  const cgstAmount = Number(ticketCgstExact.toFixed(2));
+  const sgstAmount = Number(ticketSgstExact.toFixed(2));
+  const total = Math.max(0, subtotal - appliedDiscount + platformFee + gstAmount);
 
-  const cgstAmount = Number((ticketCgstExact + convenienceFee * 0.09).toFixed(2));
-  const sgstAmount = Number((ticketSgstExact + convenienceFee * 0.09).toFixed(2));
-  const total = Math.max(0, subtotal - appliedDiscount + convenienceFee + gstAmount);
-
-  let ticketGstLabel = '18% GST';
-  if (hasLowSlab && !hasHighSlab) ticketGstLabel = '5% (2.5% CGST + 2.5% SGST)';
-  else if (hasLowSlab && hasHighSlab) ticketGstLabel = '5% & 18% Slabs';
-  else if (hasHighSlab) ticketGstLabel = '18% (9% CGST + 9% SGST)';
+  let taxLabel = 'CGST (9%) + SGST (9%)';
+  if (hasLowSlab && !hasHighSlab) taxLabel = 'CGST (2.5%) + SGST (2.5%)';
+  else if (hasLowSlab && hasHighSlab) taxLabel = 'CGST + SGST (2.5% / 9%)';
 
   return {
     subtotal,
     discountAmount: appliedDiscount,
-    convenienceFee,
-    ticketGst,
-    convenienceFeeGst,
+    platformFee,
     gstAmount,
     cgstAmount,
     sgstAmount,
     hasLowSlab,
     hasHighSlab,
-    ticketGstLabel,
+    taxLabel,
     total,
   };
 }

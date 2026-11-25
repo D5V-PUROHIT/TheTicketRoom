@@ -16,11 +16,11 @@ export default function FinanceReportsTab({ financeSummary, onDownloadCsv }) {
           </div>
           <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
             <div style={{ fontSize: 24, fontWeight: 800 }}>{inr(financeSummary.totals?.total_convenience_fees || 0)}</div>
-            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Convenience Fees</div>
+            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Platform Fees</div>
           </div>
           <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
             <div style={{ fontSize: 24, fontWeight: 800 }}>{inr(financeSummary.totals?.total_gst || 0)}</div>
-            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Total GST Collected (5% / 18%)</div>
+            <div style={{ fontSize: 12, color: 'var(--mute)' }}>CGST + SGST Collected</div>
           </div>
         </div>
       )}

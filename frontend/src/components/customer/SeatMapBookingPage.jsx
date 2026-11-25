@@ -434,8 +434,8 @@ export default function SeatMapBookingPage({ user, movie, openShows = [], select
               <div style={{ fontSize: 12, color: 'var(--mute)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <span>Tickets: <b>{inr(pricing.subtotal)}</b></span>
                 {pricing.discountAmount > 0 && <span style={{ color: 'var(--mint)' }}>Discount: -<b>{inr(pricing.discountAmount)}</b></span>}
-                <span>Ticket GST • {pricing.ticketGstLabel}: <b>{inr(pricing.ticketGst)}</b></span>
-                <span>Conv. Fee + 18% GST: <b>{inr(pricing.convenienceFee)} + {inr(pricing.convenienceFeeGst)}</b></span>
+                <span>{pricing.taxLabel}: <b>{inr(pricing.gstAmount)}</b></span>
+                <span>Platform Fee: <b>{inr(pricing.platformFee)}</b></span>
               </div>
             </div>
 

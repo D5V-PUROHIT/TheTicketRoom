@@ -41,7 +41,7 @@ export default function TrustPolicyModal({ policy, onClose }) {
             <div>
               <p style={{ marginBottom: 10 }}>1. <b>Cancellation Window:</b> Bookings may be cancelled online up to 20 minutes before scheduled showtime directly through the "My Bookings" interface.</p>
               <p style={{ marginBottom: 10 }}>2. <b>Refund Issuance:</b> Refunds are initiated immediately back to the original payment source. Depending on the issuing bank, funds credit within 3 to 5 business days.</p>
-              <p>3. <b>GST & Convenience Fee:</b> Ticket GST follows Indian GST slabs (5% up to ₹100 [2.5% CGST + 2.5% SGST], 18% above ₹100). Convenience fees and applicable 18% GST are statutory service charges.</p>
+              <p>3. <b>CGST / SGST & Platform Fee:</b> Ticket tax follows Indian GST slabs (5% up to ₹100 [2.5% CGST + 2.5% SGST], 18% above ₹100 [9% CGST + 9% SGST]), plus a flat ₹20 Platform Fee per booking.</p>
             </div>
           )}
           {policy === 'licensing' && (

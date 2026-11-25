@@ -41,7 +41,7 @@ router.get('/finance/export', requireLogin, requireRole('finance'), catchAsync(a
     ORDER BY b.created_at DESC
   `);
 
-  const headers = ['Reference', 'Date', 'Customer', 'Movie', 'Screening Date', 'Screening Time', 'Subtotal', 'Discount', 'Convenience Fee', 'GST', 'Total Paid', 'Status'];
+  const headers = ['Reference', 'Date', 'Customer', 'Movie', 'Screening Date', 'Screening Time', 'Subtotal', 'Discount', 'Platform Fee', 'CGST + SGST', 'Total Paid', 'Status'];
   const lines = [headers.join(',')];
   for (const r of rows) {
     lines.push([

@@ -14,7 +14,7 @@ TheTicketRoom/
 │   ├── server.js                     # Starts HTTP + Socket.IO server & DB setup
 │   ├── createApp.js                  # Express middleware, mounts routes, cleans expired holds
 │   ├── config/
-│   │   └── bookingRules.js           # 4-seat cap, 2-min hold timer, convenience fee & GST rates
+│   │   └── bookingRules.js           # 4-seat cap, 2-min hold timer, platform fee & GST rates
 │   ├── database/
 │   │   ├── connection.js             # PostgreSQL connection pool & transaction helper
 │   │   ├── schema.sql                # SQL tables, constraints & indexes
@@ -24,7 +24,7 @@ TheTicketRoom/
 │   │   ├── authMiddleware.js         # JWT verification & admin role permission guards
 │   │   └── errorMiddleware.js        # Standard error formatting & async route wrapper
 │   ├── services/
-│   │   ├── gstAndPricingService.js   # Ticket GST slabs (5% <= Rs.100, 18% > Rs.100) + Fee GST
+│   │   ├── gstAndPricingService.js   # Ticket CGST+SGST slabs (5% <= Rs.100, 18% > Rs.100)
 │   │   ├── seatHoldService.js        # Concurrency-safe 2-minute seat lock & 4-seat limit check
 │   │   ├── ticketBookingService.js   # Booking confirmation (idempotent) & customer cancellation
 │   │   ├── showScheduleService.js    # Locks show edits/cancellations once tickets are booked
@@ -86,7 +86,7 @@ TheTicketRoom/
 
 - **Ticket price up to ₹100**: **5% GST** (`2.5% CGST + 2.5% SGST`)
 - **Ticket price above ₹100**: **18% GST** (`9% CGST + 9% SGST`)
-- **Convenience Fee (₹20 flat)**: **18% GST** (`9% CGST + 9% SGST`)
+- **Platform Fee (₹20 flat)**: Flat fee per booking (no extra GST on Platform Fee)
 
 Both `backend/services/gstAndPricingService.js` and `frontend/src/utils/pricingCalculator.js` calculate this identically so the checkout button total always matches the invoice stored in PostgreSQL.
 

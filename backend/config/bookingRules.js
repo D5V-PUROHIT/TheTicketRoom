@@ -6,11 +6,8 @@ module.exports = {
   // How long a selected seat stays locked (2 minutes) before auto-releasing.
   HOLD_DURATION_SECONDS: 120,
 
-  // Flat platform convenience fee charged per booking (in INR).
-  CONVENIENCE_FEE_INR: 20,
-
-  // Convenience fee always attracts 18% GST (9% CGST + 9% SGST).
-  CONVENIENCE_FEE_GST_RATE: 0.18,
+  // Flat platform fee charged per booking (in INR). No extra GST applied on top.
+  PLATFORM_FEE_INR: 20,
 
   // Indian GST slabs for movie tickets (effective September 22, 2025):
   // - Ticket price up to Rs.100 -> 5% GST (2.5% CGST + 2.5% SGST)

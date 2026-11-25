@@ -36,7 +36,7 @@ export default function TicketPassCard({ booking, movie, onCancel }) {
             <b>Seats: </b><span>{booking.seats?.map((s) => s.label).join(', ')}</span>
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--mute)', marginBottom: 6 }}>
-            Tickets {inr(booking.subtotal || 0)} + Fee {inr(booking.convenience_fee || 0)} + GST {inr(booking.gst_amount || 0)}
+            Tickets {inr(booking.subtotal || 0)} + CGST & SGST {inr(booking.gst_amount || 0)} + Platform Fee {inr(booking.convenience_fee || 0)}
             {booking.discount_amount > 0 ? ` - Disc ${inr(booking.discount_amount)}` : ''}
           </div>
           <div style={{ fontSize: 13, marginBottom: 12 }}>

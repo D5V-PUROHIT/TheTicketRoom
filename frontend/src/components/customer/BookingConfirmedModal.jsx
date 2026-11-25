@@ -57,8 +57,8 @@ export default function BookingConfirmedModal({ booking, movie, onClose, onViewA
             <div style={{ fontSize: 12, color: 'var(--mute)', borderTop: '1px dashed var(--line)', paddingTop: 8, marginTop: 8 }}>
               Tickets: {inr(booking.subtotal)}
               {booking.discount_amount > 0 ? ` • Discount: -${inr(booking.discount_amount)}` : ''}
-              {' '}• Convenience Fee: {inr(booking.convenience_fee)}
-              {' '}• Total GST: {inr(booking.gst_amount)}
+              {' '}• CGST + SGST: {inr(booking.gst_amount)}
+              {' '}• Platform Fee: {inr(booking.convenience_fee)}
             </div>
             <div style={{ marginTop: 6 }}>
               <b>Total Paid: </b>

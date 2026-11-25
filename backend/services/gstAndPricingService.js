@@ -1,15 +1,13 @@
-// Calculates ticket subtotal, promo discount, Indian GST slabs (5% <= Rs.100, 18% > Rs.100), and convenience fee.
+// Calculates ticket subtotal, promo discount, Indian GST slabs (CGST + SGST only), and platform fee.
 const {
-  CONVENIENCE_FEE_INR,
-  CONVENIENCE_FEE_GST_RATE,
+  PLATFORM_FEE_INR,
   GST_LOW_SLAB_MAX_PRICE,
   GST_LOW_SLAB_RATE,
   GST_HIGH_SLAB_RATE,
 } = require('../config/bookingRules');
 
 /**
- * Determines GST rate and CGST/SGST split for one ticket based on its price.
- * Rule (effective Sept 22, 2025):
+ * Determines CGST and SGST rates/amounts for one ticket based on its price:
  * - Ticket price <= Rs.100: 5% GST (2.5% CGST + 2.5% SGST)
  * - Ticket price > Rs.100: 18% GST (9% CGST + 9% SGST)
  */
@@ -27,12 +25,12 @@ function getTicketGstSlab(ticketPrice) {
 }
 
 /**
- * Computes full itemized pricing and GST breakdown for a list of selected seats.
+ * Computes full itemized pricing with CGST + SGST on tickets only, plus flat Platform Fee.
  */
 function calculateBookingPricing(seats = [], discountAmount = 0) {
   const subtotal = seats.reduce((sum, seat) => sum + Number(seat.price || 0), 0);
   const appliedDiscount = Math.min(Math.max(0, Number(discountAmount || 0)), subtotal);
-  const convenienceFee = seats.length > 0 ? CONVENIENCE_FEE_INR : 0;
+  const platformFee = seats.length > 0 ? PLATFORM_FEE_INR : 0;
 
   let ticketGstExact = 0;
   let ticketCgstExact = 0;
@@ -49,23 +47,17 @@ function calculateBookingPricing(seats = [], discountAmount = 0) {
     ticketSgstExact += slab.sgstExact;
   }
 
-  // Ticket GST uses the 5%/18% slabs; Convenience fee (service) attracts 18% GST.
-  const ticketGst = Math.round(ticketGstExact);
-  const convenienceFeeGst = Math.round(convenienceFee * CONVENIENCE_FEE_GST_RATE);
-  const gstAmount = ticketGst + convenienceFeeGst;
-
-  const cgstAmount = Number((ticketCgstExact + convenienceFee * (CONVENIENCE_FEE_GST_RATE / 2)).toFixed(2));
-  const sgstAmount = Number((ticketSgstExact + convenienceFee * (CONVENIENCE_FEE_GST_RATE / 2)).toFixed(2));
-  const totalPrice = Math.max(0, subtotal - appliedDiscount + convenienceFee + gstAmount);
+  // Tax consists strictly of ticket CGST + SGST (no extra tax on Platform Fee).
+  const gstAmount = Math.round(ticketGstExact);
+  const cgstAmount = Number(ticketCgstExact.toFixed(2));
+  const sgstAmount = Number(ticketSgstExact.toFixed(2));
+  const totalPrice = Math.max(0, subtotal - appliedDiscount + platformFee + gstAmount);
 
   return {
     subtotal,
     discountAmount: appliedDiscount,
-    convenienceFee,
-    ticketGst,
-    ticketCgstExact: Number(ticketCgstExact.toFixed(2)),
-    ticketSgstExact: Number(ticketSgstExact.toFixed(2)),
-    convenienceFeeGst,
+    platformFee,
+    convenienceFee: platformFee,
     gstAmount,
     cgstAmount,
     sgstAmount,
