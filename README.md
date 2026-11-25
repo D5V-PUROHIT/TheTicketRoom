@@ -1,101 +1,142 @@
 # TheTicketRoom: Real-Time Seat Booking System
 
-Real-time seat booking for a single screening (one movie, 10:00 PM, one hall, 100 seats in a 10 x 10 grid) built to stay correct when hundreds of users book at the same moment.
+A real-time cinema ticket booking platform built with **PostgreSQL, Express, Socket.IO, and React (Vite)**. Engineered for high concurrency under race conditions (500 simultaneous users) with zero double-bookings, row-level locking, and a modern BookMyShow-inspired entertainment experience.
 
-**Stack:** PostgreSQL, Node.js + Express, Socket.IO, React (Vite). The Express server also serves the built React app, so the whole project deploys as one web service plus one database.
+**Live Deployment:** [https://theticketroom.onrender.com](https://theticketroom.onrender.com)
 
-## Features
+---
 
-- Register and login with bcrypt password hashing and JWT authentication (8 hour expiry)
-- 10 x 10 seat map with Available, Held and Booked states, updated live for everyone over WebSockets
-- Selecting seats places a 2 minute hold with a visible countdown; unconfirmed holds are released automatically
-- Maximum 4 seats per user (counting seats already booked); confirmation is all-or-nothing
-- Idempotent confirmation: double clicks and network retries never create duplicate bookings
-- Clear `SEAT_UNAVAILABLE` response (HTTP 409) for users who lose a race
-- My Bookings with ticket cards and cancellation
-- Admin dashboard with live available / held / booked counts, revenue and latest bookings
-- Extras: tiered pricing (Recliner, Prime, Classic), live "watching now" counter, price total for the current selection
+## Key Features
 
-## Setup
+### 🎬 Visual & Experience Layer (BookMyShow Inspired)
+- **Entertainment Landing Portal**: Blockbuster hero showcase for *"Midnight at the Observatory"*, synopsis, rating badges (`IMAX 3D`, `Dolby Atmos 7.1`, `★ 9.4/10`), and recommended movie carousel.
+- **1-Click Quick Demo Login**: Instant login chips for **User 1** and **Cinema Admin** for effortless assessment.
+- **Cinematic Seat Map**: Glowing curved projection screen with ambient light beam, tier color language (Recliner, Prime, Classic), and live peer-change pulse animations.
+- **"Best Available" Quick-Suggester**: 1-click contiguous seat finder for groups of 1, 2, 3, or 4 seats in optimal acoustic center rows.
+- **Hold Expiry Warning Toast**: Automatic notification alerting the user when their 2-minute hold has $\le 30$ seconds remaining.
+- **Printable / Downloadable Ticket Passes**: Perforated boarding pass design with tear-off notches, barcode, simulated QR code, and browser print stylesheet.
+- **Full Keyboard Accessibility**: Arrow key navigation (`Up`, `Down`, `Left`, `Right`) across the 10x10 seat grid; `Space`/`Enter` to toggle selection.
+- **Responsive down to 360px**: Fluid layout with touch targets and horizontal scroll preservation on mobile devices.
 
-Requirements: Node.js 18+, PostgreSQL 13+.
+### 🛡️ Concurrency & Data-Integrity Layer
+- **PostgreSQL Row-Level Locking (`SELECT ... FOR UPDATE`)**: Taken in deterministic ascending seat ID order to eliminate race conditions and avoid deadlocks.
+- **User Row Lock Serialization**: Serializes concurrent requests per user to make the 4-seat limit race-free.
+- **Database CHECK Constraints**: `CHECK` constraints on `seats` ensure invalid combinations (e.g. held without expiry or booked without booking ID) are unrepresentable.
+- **Idempotency Protection**: `UNIQUE (user_id, idempotency_key)` on bookings ensures double-clicks and network retries return the same confirmed booking.
+- **Graceful Conflict Handling**: Users who lose a seat race receive HTTP 409 with code `SEAT_UNAVAILABLE` and friendly guidance — never a 5xx error.
+- **Projection-Based Hold Expiry**: Reads project expired holds as `available` immediately at SQL query time, eliminating dependence on timer accuracy.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Database** | PostgreSQL 16+ (Row locks, partial indexes, constraints) |
+| **Backend** | Node.js, Express, Socket.IO, JWT, bcrypt, Helmet, CORS |
+| **Frontend** | React 18, Vite, Bricolage Grotesque & DM Sans typography |
+| **Deployment** | Render Web Service + Managed PostgreSQL (Single repo) |
+
+---
+
+## Quickstart
+
+### Prerequisites
+- Node.js 18+
+- PostgreSQL 13+
+
+### Local Installation
 
 ```bash
-git clone <repo-url> && cd cinema-booking
-cp .env.example .env            # then edit DATABASE_URL and JWT_SECRET
-createdb cinema                 # or create the database in any other way
+git clone https://github.com/D5V-PUROHIT/TheTicketRoom.git
+cd TheTicketRoom
+
+# 1. Configure environment variables
+cp .env.example .env
+# Edit .env with your local or remote DATABASE_URL and JWT_SECRET
+
+# 2. Install dependencies
 npm install
-npm run seed                    # creates tables, 100 seats, 500 users, 1 admin
-npm run build                   # builds the React client into client/dist
-npm start                       # http://localhost:3000
+
+# 3. Seed database (100 seats, 500 users, 1 admin)
+npm run seed
+
+# 4. Build client
+npm run build
+
+# 5. Start server
+npm start
+# App running at http://localhost:3000
 ```
 
-Development with hot reload: run `npm run dev` (API on port 3000) and, in a second terminal, `cd client && npm install && npm run dev` (UI on port 5173, proxied to the API).
+---
 
-### Environment variables (`.env.example`)
+## Seed Accounts & Credentials
 
-| Variable | Purpose |
-| --- | --- |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `JWT_SECRET` | Secret used to sign tokens (required) |
-| `PORT` | HTTP port, defaults to 3000 |
-| `PGSSL` | Set to `true` for hosted databases that require SSL |
+| Role | Email | Password | Quick Action |
+|---|---|---|---|
+| **Demo User** | `user1@test.com` (up to `user500@test.com`) | `Test@1234` | Available via 1-Click chip |
+| **Admin** | `admin@test.com` | `Admin@123` | Available via 1-Click chip |
 
-### Seed script
+---
 
-`npm run seed` is safe to run repeatedly. It creates the schema, inserts the 100 seats, inserts any missing users, and resets the hall to empty (all seats available, all bookings removed).
+## Concurrency Testing & Load Testing
 
-### Credentials
-
-| Role | Email | Password |
-| --- | --- | --- |
-| Users | `user1@test.com` to `user500@test.com` | `Test@1234` |
-| Admin | `admin@test.com` | `Admin@123` |
-
-### Tests
-
+### 1. Automated Concurrency Test Suite
 ```bash
 npm test
 ```
+- **Test 1 (200-User Race)**: 200 users simultaneously request the exact same 4 seats. Asserts exactly 1 winner, 199 graceful 409 responses, 0 server errors, and verifies idempotent duplicate booking replays.
+- **Test 2 (300-User Overlap)**: 300 users pick random overlapping seats. Asserts disjointness: zero seats ever double-booked across all successful bookings.
 
-The suite runs against the database in `DATABASE_URL` (seed it first) and resets the hall before and after.
+### 2. Standalone 500-User Concurrent Load Test
+```bash
+npm run load-test
+# Or test against a remote instance:
+node scripts/load-test.js https://theticketroom.onrender.com
+```
+Fires 500 parallel user logins and simultaneous seat hold + confirmation races, then queries PostgreSQL to verify 0 double-bookings and 0 5xx errors.
 
-1. 200 users request the same 4 seats at the same instant. Asserts exactly one wins, every other response is a 409 `SEAT_UNAVAILABLE` (no 5xx), a duplicate confirmation with the same idempotency key returns the same booking, and the database holds exactly 4 booked seats under 1 booking.
-2. 300 users each pick 4 random seats from the same 16 and hold then confirm. Asserts no seat appears in more than one booking and the booked-seat count matches the seats claimed by successful bookings.
+---
 
-### Deployment (Render)
+## API Endpoints
 
-Create a PostgreSQL instance and a Web Service from the repository. Build command `npm install && npm run build`, start command `npm start`, and set `DATABASE_URL`, `JWT_SECRET` and `PGSSL=true`. Run `npm run seed` once from the service shell.
-
-## API
-
-All endpoints are prefixed with `/api`. Errors use the shape `{ "error": { "code", "message" } }`. Authenticated routes expect `Authorization: Bearer <token>`.
+All endpoints are prefixed with `/api`. Authenticated routes require `Authorization: Bearer <token>`.
 
 | Method | Path | Auth | Description |
-| --- | --- | --- | --- |
-| POST | `/auth/register` | none | Create an account, returns token and user |
-| POST | `/auth/login` | none | Sign in, returns token and user |
-| GET | `/seats` | user | All 100 seats with effective status, plus limits |
-| POST | `/holds` | user | Body `{ "seatIds": [1,2] }`. Replaces the caller's current selection; an empty array releases it. 409 `SEAT_UNAVAILABLE` if any seat is taken, 400 `MAX_SEATS` over the limit |
-| POST | `/bookings` | user | Converts the caller's live hold into a booking. Requires an `Idempotency-Key` header. 409 `HOLD_EXPIRED` if there is no live hold |
-| GET | `/bookings` | user | The caller's confirmed bookings |
-| DELETE | `/bookings/:id` | user | Cancels the caller's booking and frees its seats |
-| GET | `/admin/stats` | admin | Live counts, revenue and latest bookings |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | None | Creates user account; returns token and user profile |
+| `POST` | `/api/auth/login` | None | Validates credentials; returns token and user profile |
+| `GET` | `/api/seats` | User | Fetches all 100 seats with effective live status and pricing |
+| `POST` | `/api/holds` | User | Places or updates a 2-minute hold on `{ "seatIds": [1, 2] }` |
+| `POST` | `/api/bookings` | User | Confirms live hold into a booking. Requires `Idempotency-Key` header |
+| `GET` | `/api/bookings` | User | Retrieves user's confirmed bookings and seat labels |
+| `DELETE` | `/api/bookings/:id` | User | Cancels user's booking and releases seats immediately |
+| `GET` | `/api/admin/stats` | Admin | Real-time counts (Available, Held, Booked), revenue, and recent feed |
 
-WebSocket (Socket.IO, token passed in the handshake `auth`): the server emits `seats:update` with the changed seats whenever a seat is held, released, booked, cancelled or expires, and `presence` with the number of connected clients.
+### WebSocket Events (Socket.IO)
+- Handshake authenticated via JWT `socket.handshake.auth.token`.
+- `seats:update`: Pushed to all clients on every hold, release, booking, cancellation, and expiry.
+- `presence`: Broadcasts live count of connected users.
 
-## Database schema and double-booking prevention
+---
 
-Three tables: `users` (role is `user` or `admin`), `seats` (one row per seat with `status`, `held_by`, `hold_expires_at` and `booking_id`) and `bookings` (reference code, total, status, and a `UNIQUE (user_id, idempotency_key)` constraint). A `CHECK` constraint on `seats` makes inconsistent states unrepresentable, for example a booked seat that also has a holder, and `UNIQUE (row_label, seat_number)` keeps the grid fixed at 100 seats.
+## Database Schema & Concurrency Design
 
-Double-booking is prevented in the database, not in application memory. Every hold, confirmation and cancellation runs in a transaction that first takes `SELECT ... FOR UPDATE` row locks on the affected seats, always in ascending id order so concurrent requests queue instead of deadlocking. Availability is evaluated after the locks are held, so two requests can never both observe a seat as free. A request that finds any seat unavailable aborts the whole transaction, which gives all-or-nothing behaviour for multi-seat selections. Each transaction also locks the caller's user row first, which serialises one user's own concurrent requests and makes the 4-seat limit race-free.
+Three primary tables:
+1. `users`: ID, name, unique email, password hash, role (`user` or `admin`).
+2. `seats`: Fixed 100 seats (`row_label`, `seat_number`), tier pricing (`price`), `status` (`available`, `held`, `booked`), `held_by`, `hold_expires_at`, and `booking_id`.
+3. `bookings`: ID, `user_id`, `idempotency_key`, reference code (`CX...`), `total_price`, and `status`.
 
-Holds are stored on the seat row with an expiry timestamp. Reads treat an expired hold as available immediately, so correctness never depends on a timer, and a background sweep every 3 seconds persists the release and broadcasts it. Confirmation only accepts holds that are still live. Retries are handled by the idempotency key: the booking row is unique per user and key, so a repeated request returns the original booking instead of creating another.
-
-## Assumptions
-
-- The 4 seat limit counts both active holds and confirmed bookings for the same user.
-- Selecting seats replaces the user's previous selection, and re-selecting a seat that is already held by the same user does not extend its 2 minute window.
-- Cancelling a booking immediately returns the seats to Available. Payment is out of scope.
-- The 500 seeded users share one bcrypt hash of the common password to keep seeding fast; hashes for newly registered users are salted individually.
-- Registration is open and creates regular users only; the admin account is created by the seed script.
+### Double-Booking Prevention Mechanics
+- **Deterministic Lock Ordering**: Row locks (`SELECT ... FOR UPDATE`) are taken strictly in ascending seat ID order (`ORDER BY id`). This prevents deadlocks even when hundreds of requests target overlapping subsets.
+- **User Serialization**: The user row is locked first (`SELECT 1 FROM users WHERE id = $1 FOR UPDATE`), guaranteeing that a single user cannot bypass the 4-seat limit via concurrent requests.
+- **All-or-Nothing Holds**: Multi-seat requests evaluate availability after all locks are held. If any seat is taken or held by another live session, the transaction rolls back cleanly with HTTP 409 `SEAT_UNAVAILABLE`.
+- **Database CHECK Constraint**:
+  ```sql
+  CHECK (
+    (status = 'available' AND held_by IS NULL AND booking_id IS NULL) OR
+    (status = 'held' AND held_by IS NOT NULL AND hold_expires_at IS NOT NULL AND booking_id IS NULL) OR
+    (status = 'booked' AND booking_id IS NOT NULL AND held_by IS NULL)
+  )
+  ```
