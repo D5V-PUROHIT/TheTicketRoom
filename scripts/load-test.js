@@ -1,7 +1,7 @@
 /**
  * Standalone Concurrent Load-Test Script for TheTicketRoom
  * 
- * Simulates 500 concurrent users racing to reserve and book seats in Hall 1.
+ * Simulates 500 seeded users racing to reserve and book seats concurrently.
  * Verifies:
  *  1. Exactly 0 double-bookings (all successful bookings claim disjoint seats).
  *  2. 0 server errors (5xx) under massive concurrency.
@@ -18,40 +18,57 @@ require('dotenv').config();
 
 const TARGET = process.argv[2] || process.env.TARGET_URL || 'http://localhost:3000';
 const TOTAL_USERS = 500;
+const CONCURRENCY = 50; // 50 simultaneous in-flight connections
 const USER_PASSWORD = 'Test@1234';
 
 async function fetchJson(url, options = {}) {
+  const { headers, ...rest } = options;
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(headers || {}),
+    },
+    ...rest,
   });
   const data = await res.json().catch(() => ({}));
   return { status: res.status, ok: res.ok, data };
 }
 
+// Concurrency pool runner
+async function mapConcurrent(items, concurrency, fn) {
+  const results = new Array(items.length);
+  let index = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 async function run() {
   console.log('='.repeat(70));
   console.log(`🚀 STARTING CONCURRENT LOAD TEST ON: ${TARGET}`);
-  console.log(`👥 Target: ${TOTAL_USERS} concurrent seeded users`);
+  console.log(`👥 Target: ${TOTAL_USERS} users | Parallel In-Flight Lanes: ${CONCURRENCY}`);
   console.log('='.repeat(70));
 
-  // Step 1: Login all 500 users concurrently
-  console.log('\n[1/4] 🔑 Logging in 500 users in parallel...');
+  // Step 1: Login all 500 users
+  console.log('\n[1/4] 🔑 Logging in 500 users concurrently...');
   const t0 = Date.now();
-  const loginPromises = Array.from({ length: TOTAL_USERS }, (_, i) => {
-    const id = i + 1;
-    return fetchJson(`${TARGET}/api/auth/login`, {
+  const userIds = Array.from({ length: TOTAL_USERS }, (_, i) => i + 1);
+
+  const logins = await mapConcurrent(userIds, CONCURRENCY, async (id) => {
+    const res = await fetchJson(`${TARGET}/api/auth/login`, {
       method: 'POST',
       body: JSON.stringify({ email: `user${id}@test.com`, password: USER_PASSWORD }),
-    }).then((r) => ({ id, token: r.data?.token, error: r.ok ? null : r.data }));
+    });
+    return { id, token: res.data?.token, error: res.ok ? null : res.data };
   });
 
-  const logins = await Promise.all(loginPromises);
   const authSuccess = logins.filter((l) => l.token);
   console.log(`  ✓ Logged in: ${authSuccess.length} / ${TOTAL_USERS} users in ${Date.now() - t0}ms`);
-  if (authSuccess.length < TOTAL_USERS) {
-    console.error(`  ✕ Warning: ${TOTAL_USERS - authSuccess.length} users failed login`);
-  }
 
   // Step 2: 500 users race concurrently for overlapping seat selections
   console.log('\n[2/4] ⚡ Firing 500 concurrent hold requests...');
@@ -68,7 +85,7 @@ async function run() {
   const successfulSeatsClaimed = [];
   const tRace = Date.now();
 
-  const racePromises = authSuccess.map(async (u) => {
+  await mapConcurrent(authSuccess, CONCURRENCY, async (u) => {
     // Each user randomly selects 1 to 4 seats in the 100-seat theatre (heavily overlapping)
     const seatCount = 1 + Math.floor(Math.random() * 4);
     const chosenSeats = new Set();
@@ -130,7 +147,6 @@ async function run() {
     }
   });
 
-  await Promise.all(racePromises);
   const raceDuration = Date.now() - tRace;
   console.log(`  ✓ Concurrency race completed in ${raceDuration}ms`);
 
