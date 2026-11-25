@@ -822,7 +822,51 @@ app.get('/api/admin/audit-logs', auth, requireRole('super_admin'), wrap(async (r
   res.json({ logs: rows });
 }));
 
-// 7. User Suspension & Account Moderation (Role: super_admin)
+// 7. User Suspension & Account Moderation (Role: super_admin, support)
+app.get('/api/admin/users', auth, requireRole('support'), wrap(async (req, res) => {
+  const { q } = req.query;
+  let sql = `
+    SELECT u.id, u.name, u.email, u.role, u.is_suspended, u.created_at,
+           count(b.id)::int AS bookings_count,
+           coalesce(sum(b.total_price), 0)::int AS total_spent
+    FROM users u
+    LEFT JOIN bookings b ON b.user_id = u.id AND b.status = 'confirmed'
+  `;
+  const params = [];
+  if (q && q.trim()) {
+    sql += ' WHERE u.email ILIKE $1 OR u.name ILIKE $1 ';
+    params.push(`%${q.trim()}%`);
+  }
+  sql += ' GROUP BY u.id ORDER BY u.id ASC LIMIT 50';
+  const { rows } = await pool.query(sql, params);
+  res.json({ users: rows });
+}));
+
+app.put('/api/admin/shows/:id', auth, requireRole('operations'), wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const { status, date_str, time_str } = req.body || {};
+  const { rows: [s] } = await pool.query(
+    `UPDATE shows SET
+       status = coalesce($1, status),
+       date_str = coalesce($2, date_str),
+       time_str = coalesce($3, time_str)
+     WHERE id = $4 RETURNING *`,
+    [status || null, date_str || null, time_str || null, id]
+  );
+  if (!s) throw new HttpError(404, 'NOT_FOUND', 'Show not found');
+
+  await logAudit(pool, {
+    adminId: req.user.id,
+    action: 'UPDATE_SHOW',
+    targetType: 'show',
+    targetId: id,
+    details: { status: s.status, date_str: s.date_str, time_str: s.time_str },
+    reason: 'Admin show update',
+  });
+
+  res.json({ show: s });
+}));
+
 app.put('/api/admin/users/:id/suspend', auth, requireRole('super_admin'), wrap(async (req, res) => {
   const id = Number(req.params.id);
   const { suspended = true, reason } = req.body || {};
