@@ -73,13 +73,105 @@ Every administrative action (show updates, cancellations, refunds, seat blocks, 
 
 ---
 
-## ⚡ Concurrency & Double-Booking Prevention Rules
+## ⚡ Database Schema & Double-Booking Prevention (Architecture Deep-Dive)
 
-1. **Deterministic Row Lock Ordering (`SELECT ... FOR UPDATE ORDER BY id`)**: Seat rows are always locked in ascending ID order to mathematically eliminate database deadlocks.
-2. **User Row Serialization**: The caller's user record is locked first (`SELECT 1 FROM users WHERE id = $1 FOR UPDATE`), guaranteeing that concurrent requests cannot exceed the 4-seat customer limit.
-3. **Post-Lock Availability Evaluation**: Availability is verified *only after* locks are acquired. Expired holds are treated as available at read time.
-4. **All-or-Nothing Holds**: If even a single seat in a multi-seat selection is taken, the transaction aborts with HTTP 409 `SEAT_UNAVAILABLE` and zero seats are reserved.
-5. **Idempotency Guarantee**: Unique constraint `(user_id, idempotency_key)` on bookings ensures duplicate clicks or retries return the original confirmed booking safely.
+### 1. Database Schema Design
+The relational schema is engineered in **PostgreSQL** with strict referential integrity, constraints, and atomic transactions:
+- **`movies`**: Stores movie metadata including title, synopsis, poster URL, cast, runtime, certificate, and active status.
+- **`halls`**: Defines theatre halls, total seat capacity (100 seats), and screen dimensions.
+- **`shows`**: Links a movie to a hall with scheduled premiere timestamp (`starts_at`), display strings (`date_str`, `time_str`), per-tier pricing (`price_recliner`, `price_club`, `price_premium`), and booking status (`open`, `paused`, `closed`).
+- **`show_seats`**: Represents the physical 100 seats per show (Row `A` to `J`, seats 1 to 10). Stores status (`available`, `held`, `booked`, `blocked`), pricing tier, temporary hold holder (`held_by`), hold expiration timestamp (`hold_expires_at`), and confirmed `booking_id`.
+- **`bookings`**: Stores confirmed ticket reservations with unique customer booking reference (`CX...`), user reference (`user_id`), show reference (`show_id`), pricing breakdown (subtotal, convenience fee, GST), and a strict unique constraint on `(user_id, idempotency_key)`.
+- **`seats` (Updatable View)**: Backwards-compatible updatable view mapping directly to `show_seats WHERE show_id = 1 WITH CHECK OPTION`, ensuring legacy single-show assessment scripts and automated test harnesses continue to work seamlessly.
+
+---
+
+### 2. How Double-Booking Is Mathematically Prevented Under High Concurrency
+When 500 concurrent users race for the same 4 seats at the exact same millisecond, data integrity is guaranteed through a five-layer concurrency protocol:
+
+1. **Deterministic Ascending Row Lock Ordering (`SELECT ... FOR UPDATE ORDER BY id`)**:
+   In PostgreSQL, when multiple transactions lock rows in different orders (e.g. Transaction A locks Seat 1 then 2, while Transaction B locks Seat 2 then 1), deadlocks occur. In TheTicketRoom, seat IDs are sorted numerically before query execution. PostgreSQL acquires exclusive row-level locks on the selected seat rows in strictly ascending order, completely eliminating deadlock possibilities.
+
+2. **User-Row Serialization (Race-Free 4-Seat Limit)**:
+   Before inspecting seats, the user's account row is locked first:
+   ```sql
+   SELECT 1 FROM users WHERE id = $1 FOR UPDATE
+   ```
+   This serializes all concurrent operations from the same user account, guaranteeing that racing parallel requests from one user cannot bypass the 4-seat customer limit.
+
+3. **Post-Lock Availability Evaluation**:
+   Seat availability is evaluated *strictly after* row-level locks are acquired inside the transaction. Any seat where `status = 'held'` and `hold_expires_at <= NOW()` is immediately treated as expired and available. Because locks are held, no other concurrent transaction can inspect or modify those seats until the current transaction commits or rolls back.
+
+4. **All-or-Nothing Atomic Reservations**:
+   Multi-seat operations are strictly atomic. If a customer attempts to reserve seats `[1, 2, 3, 4]` and seat `3` has already been claimed by another user, the entire transaction rolls back immediately. The user receives a clean HTTP 409 `SEAT_UNAVAILABLE` status code with a descriptive message—never a 500 server crash or partial booking.
+
+5. **Idempotency Guarantee (Duplicate Click & Network Retry Protection)**:
+   The `bookings` table enforces a database-level `UNIQUE(user_id, idempotency_key)` constraint. When network retries or fast double-clicks submit the same `Idempotency-Key` header, the database safely recognizes the existing transaction and returns the original confirmed booking with an HTTP 200 replay flag, preventing duplicate charges or duplicate seats.
+
+6. **Automatic Hold Expiration & Background Sweeper**:
+   Held seats hold a timestamp `hold_expires_at = NOW() + INTERVAL '120 seconds'`. If a customer abandons their cart, a lightweight background sweeper runs every 3 seconds:
+   ```sql
+   UPDATE show_seats 
+   SET status = 'available', held_by = NULL, hold_expires_at = NULL 
+   WHERE status = 'held' AND hold_expires_at <= NOW()
+   ```
+   Expired seats are instantly returned to the available pool and broadcast to all connected WebSocket clients in real time.
+
+---
+
+## 📡 Complete API Endpoint List
+
+All JSON API endpoints are prefixed with `/api`. Protected routes require a valid JWT passed in the `Authorization: Bearer <token>` header.
+
+### 1. Authentication
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | Public | Register a new customer account (`name`, `email`, `password`) |
+| `POST` | `/api/auth/login` | Public | Authenticate user or admin; returns JWT token and user profile |
+
+### 2. Movies & Showtimes
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `GET` | `/api/movie` | Public | Active screening details (*Baahubali: The Beginning*, Friday, 27 Nov at 10:00 PM) |
+| `GET` | `/api/movies` | Public | List all active movies and scheduled shows in the theatre catalogue |
+| `GET` | `/api/movies/:id` | Public | Retrieve single movie details, showtimes, synopsis, and cast |
+| `GET` | `/api/shows` | Public | List all scheduled screenings with per-tier pricing |
+
+### 3. Seats & Reservations (Concurrency Protected)
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `GET` | `/api/seats` | Optional Auth | Returns the 100 seats (10x10) for Show 1 (status: available, held, booked, blocked) |
+| `GET` | `/api/shows/:showId/seats` | Optional Auth | Returns the 100 physical seats for a specific show with row labels and tiers |
+| `POST` | `/api/holds` | Authenticated | Place 2-minute hold on up to 4 seats for Show 1 (`seatIds: [1, 2, 3, 4]`) |
+| `POST` | `/api/shows/:showId/holds` | Authenticated | Place 2-minute hold on up to 4 seats for a specific show |
+| `POST` | `/api/bookings` | Authenticated | Confirm held seats into a booking with `Idempotency-Key` header |
+| `POST` | `/api/shows/:showId/bookings` | Authenticated | Confirm held seats for a specific show into a booking |
+| `GET` | `/api/bookings` | Authenticated | Retrieve customer's personal booking history with QR references |
+| `DELETE` | `/api/bookings/:id` | Authenticated | Customer cancels booking; instantly releases seats back to Available |
+
+### 4. Admin Back-Office (Server-Enforced RBAC)
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `GET` | `/api/admin/stats` | Admin | Live KPIs: available, held, booked, blocked counts, and revenue |
+| `GET` | `/api/admin/movies` | Admin | List all catalogue movies (active and archived history) |
+| `PUT` | `/api/admin/movies/schedule` | Admin / Ops | Update date and showtime for active screening; broadcasts via WebSockets |
+| `POST` | `/api/admin/movies` | Admin / Ops | Add and publish a new movie to the theatre catalogue |
+| `POST` | `/api/admin/shows/:showId/block-seats`| Admin / Ops | Block/unblock physical seats for VIP guests or maintenance |
+| `GET` | `/api/admin/bookings` | Admin / Support| Search all customer reservations by reference, email, or seat number |
+| `POST` | `/api/admin/bookings/:id/cancel`| Admin / Support| Cancel customer booking on their behalf with mandatory audit reason |
+| `GET` | `/api/admin/finance/summary` | Admin / Finance| Comprehensive revenue breakdown, GST liability, and discount metrics |
+| `GET` | `/api/admin/finance/export` | Admin / Finance| Download complete payment and booking transaction ledger as CSV |
+| `GET` | `/api/admin/audit-logs` | Super Admin | Query append-only security audit log of all administrative actions |
+| `GET` | `/api/admin/users` | Admin / Support| List user accounts with reservation counts and moderation status |
+| `PUT` | `/api/admin/users/:id/suspend` | Super Admin | Suspend or reactivate user account for policy violations |
+
+### 5. Payments & Health
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `POST` | `/api/coupons/validate` | Authenticated | Validate promotional coupon (`TICKET50`, `CINEMA20`) |
+| `POST` | `/api/payments/create-order` | Authenticated | Initialize payment gateway order for held seats |
+| `POST` | `/api/payments/webhook` | Gateway Signature| Webhook receiver with cryptographic signature check |
+| `GET` | `/healthz` | Public | System and database connection health check |
 
 ---
 
@@ -88,6 +180,17 @@ Every administrative action (show updates, cancellations, refunds, seat blocks, 
 ### Prerequisites
 - Node.js 18+
 - PostgreSQL 14+
+
+### Environment Configuration (`.env.example`)
+Create a `.env` file in the project root based on `.env.example`:
+
+```env
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/cinema
+JWT_SECRET=replace-with-a-long-random-string
+PORT=3000
+# Set to true for hosted Postgres that requires SSL (Render, Railway, Neon)
+PGSSL=false
+```
 
 ### Installation & Run
 
