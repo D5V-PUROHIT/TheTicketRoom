@@ -965,41 +965,45 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
 
       {/* Auditorium Seating Canvas */}
       <div className="auditorium-box">
-        {/* Curved Glowing Screen at the Top */}
-        <div className="screen-glow-container">
-          <div className="screen-curved-arc">
-            <span>SCREEN (All eyes this way)</span>
+        {all.length === 0 ? (
+          <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--mute)' }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>🎬</div>
+            <p style={{ fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>Loading Auditorium Seating Map...</p>
+            <p style={{ fontSize: 13, marginTop: 4 }}>Connecting to live seat reservation server</p>
           </div>
-          <div className="screen-light-cone"></div>
-        </div>
+        ) : (
+          <>
+            {/* Tier 1: ₹350 RECLINER (Row A - Continuous 10 VIP Seats) */}
+            <div className="tier-divider-line">
+              <span className="tier-divider-label">{inr(350)} RECLINER</span>
+            </div>
+            {renderRow('A')}
 
-        {/* Tier 1: ₹350 RECLINER (Row A - Continuous 10 VIP Seats) */}
-        <div className="tier-divider-line">
-          <span className="tier-divider-label">{inr(350)} RECLINER</span>
-        </div>
-        {renderRow('A')}
+            <div style={{ height: 16 }}></div>
 
-        <div style={{ height: 16 }}></div>
+            {/* Tier 2: ₹250 CLUB (Rows B to F - 2 / 6 / 2 Split) */}
+            <div className="tier-divider-line">
+              <span className="tier-divider-label">{inr(250)} CLUB</span>
+            </div>
+            {['B', 'C', 'D', 'E', 'F'].map((r) => renderRow(r))}
 
-        {/* Tier 2: ₹250 CLUB (Rows B to F - 2 / 6 / 2 Split) */}
-        <div className="tier-divider-line">
-          <span className="tier-divider-label">{inr(250)} CLUB</span>
-        </div>
-        {['B', 'C', 'D', 'E', 'F'].map((r) => renderRow(r))}
+            <div style={{ height: 16 }}></div>
 
-        <div style={{ height: 16 }}></div>
+            {/* Tier 3: ₹180 PREMIUM (Rows G to J - 2 / 6 / 2 Split) */}
+            <div className="tier-divider-line">
+              <span className="tier-divider-label">{inr(180)} PREMIUM</span>
+            </div>
+            {['G', 'H', 'I', 'J'].map((r) => renderRow(r))}
 
-        {/* Tier 3: ₹180 PREMIUM (Rows G to J - 2 / 6 / 2 Split) */}
-        <div className="tier-divider-line">
-          <span className="tier-divider-label">{inr(180)} PREMIUM</span>
-        </div>
-        {['G', 'H', 'I', 'J'].map((r) => renderRow(r))}
-
-        {/* Bottom Screen Bar Line */}
-        <div className="bottom-screen-bar">
-          <div className="bottom-screen-line"></div>
-          <div className="bottom-screen-text">Screen Direction</div>
-        </div>
+            {/* Single Curved Glowing Cinema Screen at the Bottom facing audience */}
+            <div className="screen-glow-container" style={{ marginTop: 36, marginBottom: 16 }}>
+              <div className="screen-curved-arc">
+                <span>SCREEN THIS WAY</span>
+              </div>
+              <div className="screen-light-cone"></div>
+            </div>
+          </>
+        )}
 
         {/* Auditorium Status Legend */}
         <div className="theatre-legend">

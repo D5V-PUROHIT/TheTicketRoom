@@ -67,6 +67,15 @@ const auth = (req, res, next) => {
   }
 };
 
+// Allows unauthenticated visitors to view seats, but attaches req.user if token is present
+const optionalAuth = (req, res, next) => {
+  try {
+    const raw = (req.get('Authorization') || '').replace('Bearer ', '');
+    if (raw) req.user = jwt.verify(raw, SECRET);
+  } catch {}
+  next();
+};
+
 // Role-Based Access Control (RBAC) middleware
 const requireRole = (...roles) => (req, res, next) => {
   if (!req.user) return next(new HttpError(401, 'UNAUTHENTICATED', 'Sign in required'));
@@ -194,18 +203,49 @@ app.get('/api/movie', wrap(async (req, res) => {
 
 // ---------- Seats & Holds (Multi-Show with Single-Show Fallback) ----------
 
-// Get seats for a specific show
-app.get('/api/shows/:showId/seats', auth, wrap(async (req, res) => {
+// Get seats for a specific show (with auto-healing fallback)
+app.get('/api/shows/:showId/seats', optionalAuth, wrap(async (req, res) => {
   const showId = Number(req.params.showId);
   if (!Number.isInteger(showId)) throw new HttpError(400, 'VALIDATION', 'Invalid showId');
-  const { rows } = await pool.query(`SELECT ${VIEW} FROM show_seats WHERE show_id = $1 ORDER BY id`, [showId]);
+  try {
+    const { rows } = await pool.query(`SELECT ${VIEW} FROM show_seats WHERE show_id = $1 ORDER BY id`, [showId]);
+    if (rows && rows.length > 0) {
+      return res.json({ seats: rows, maxSeats: MAX_SEATS, holdSeconds: HOLD_SECONDS, showId });
+    }
+  } catch (err) {
+    console.warn('[TheTicketRoom] show_seats query failed, attempting auto-heal:', err.message);
+  }
+
+  // Attempt auto-seed and reload
+  const { initDb } = require('./init-db');
+  await initDb().catch(() => {});
+  const { rows } = await pool.query(`SELECT ${VIEW} FROM show_seats WHERE show_id = $1 ORDER BY id`, [showId]).catch(() => ({ rows: [] }));
   res.json({ seats: rows, maxSeats: MAX_SEATS, holdSeconds: HOLD_SECONDS, showId });
 }));
 
-// Default legacy seats route (maps to Show 1)
-app.get('/api/seats', auth, wrap(async (req, res) => {
+// Default legacy seats route (maps to Show 1 with auto-healing fallback)
+app.get('/api/seats', optionalAuth, wrap(async (req, res) => {
   const showId = Number(req.query.showId) || 1;
-  const { rows } = await pool.query(`SELECT ${VIEW} FROM show_seats WHERE show_id = $1 ORDER BY id`, [showId]);
+  try {
+    const { rows } = await pool.query(`SELECT ${VIEW} FROM show_seats WHERE show_id = $1 ORDER BY id`, [showId]);
+    if (rows && rows.length > 0) {
+      return res.json({ seats: rows, maxSeats: MAX_SEATS, holdSeconds: HOLD_SECONDS, showId });
+    }
+  } catch (err) {
+    console.warn('[TheTicketRoom] show_seats query failed, attempting auto-heal:', err.message);
+  }
+
+  // Fallback to legacy seats view or auto-seed
+  try {
+    const { rows } = await pool.query('SELECT id, row_label, seat_number, tier, price, status, held_by, hold_expires_at FROM seats ORDER BY id');
+    if (rows && rows.length > 0) {
+      return res.json({ seats: rows, maxSeats: MAX_SEATS, holdSeconds: HOLD_SECONDS, showId: 1 });
+    }
+  } catch {}
+
+  const { initDb } = require('./init-db');
+  await initDb().catch(() => {});
+  const { rows } = await pool.query(`SELECT ${VIEW} FROM show_seats WHERE show_id = $1 ORDER BY id`, [showId]).catch(() => ({ rows: [] }));
   res.json({ seats: rows, maxSeats: MAX_SEATS, holdSeconds: HOLD_SECONDS, showId });
 }));
 

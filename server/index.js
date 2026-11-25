@@ -2,6 +2,7 @@ const http = require('http'), jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
 const app = require('./app');
 const pool = require('./db');
+const { initDb } = require('./init-db');
 
 const server = http.createServer(app);
 const io = new Server(server);
@@ -41,4 +42,13 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`TheTicketRoom server listening on port ${PORT}`));
+
+// Auto-run schema migrations and seed on startup (crucial for Render and fresh deployments)
+initDb()
+  .then(() => {
+    server.listen(PORT, () => console.log(`TheTicketRoom server listening on port ${PORT}`));
+  })
+  .catch((err) => {
+    console.error('[TheTicketRoom] DB init warning:', err.message);
+    server.listen(PORT, () => console.log(`TheTicketRoom server listening on port ${PORT}`));
+  });
