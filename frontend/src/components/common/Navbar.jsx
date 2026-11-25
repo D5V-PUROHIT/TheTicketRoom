@@ -176,9 +176,6 @@ export default function Navbar({ user, isStaff, view, setView, activeMovie, onli
                 <span className="cat-item" onClick={() => notify('Dolby Atmos 7.1 Laser Projection Active', 'ok')}>
                   Experiences
                 </span>
-                <span className="cat-item" onClick={() => notify('Promo codes TICKET50 & CINEMA20 available at checkout', 'ok')}>
-                  Offers (Coupons Active)
-                </span>
               </div>
               <div style={{ display: 'flex', gap: 16, fontSize: 12.5 }}>
                 <span style={{ color: 'var(--mint)', fontWeight: 700 }}>● {online} active booking now</span>
