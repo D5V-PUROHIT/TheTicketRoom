@@ -239,7 +239,7 @@ export default function App() {
       <div className="top-notice">
         <span>⚡</span>
         <span>
-          <b>TheTicketRoom</b> — Live Online Cinema Reservations • Hold seats for 2 minutes with instant confirmation
+          <b>TheTicketRoom</b> — Live Online Cinema Reservations
         </span>
       </div>
 
@@ -268,7 +268,7 @@ export default function App() {
               type="text"
               placeholder="Search movies, halls, genres, premium experiences..."
               readOnly
-              onClick={() => notify('Showing all screenings for Friday, 28th Nov', 'ok')}
+              onClick={() => notify('Showing all screenings for Friday, 27th Nov', 'ok')}
             />
           </div>
 
@@ -1575,16 +1575,13 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
       </div>
 
       <form onSubmit={handleUpdateSchedule}>
-        {/* Screening Date with Calendar Picker */}
+        {/* Screening Date */}
         <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>Screening Date</label>
-            <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
-              📅 Calendar Picker
-            </span>
-          </div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>
+            Screening Date
+          </label>
 
-          {/* Interactive Date Picker input */}
+          {/* Date Picker input + formatted string */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
             <input
               type="date"
@@ -1602,31 +1599,26 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
                 color: 'var(--ink)',
               }}
             />
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: 'var(--accent-soft)', padding: '8px 12px', borderRadius: 8, fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
-              🗓️ Auto-computes day of week
-            </div>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Friday, 27 November, 2026"
+              value={schedForm.date_str}
+              onChange={(e) => setSchedForm({ ...schedForm, date_str: e.target.value })}
+              style={{
+                flex: 1,
+                padding: '9px 12px',
+                border: '1px solid var(--line)',
+                borderRadius: 8,
+                fontSize: 13.5,
+                fontWeight: 600,
+                color: 'var(--ink)',
+              }}
+            />
           </div>
 
-          {/* Formatted Date string input */}
-          <input
-            type="text"
-            required
-            placeholder="e.g. Friday, 27 November, 2026"
-            value={schedForm.date_str}
-            onChange={(e) => setSchedForm({ ...schedForm, date_str: e.target.value })}
-            style={{
-              width: '100%',
-              padding: '9px 12px',
-              border: '1px solid var(--line)',
-              borderRadius: 8,
-              fontSize: 13.5,
-              fontWeight: 600,
-              color: 'var(--ink)',
-            }}
-          />
-
           {/* Date shortcut presets */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <button
               type="button"
               className="btn-ghost"
@@ -1675,14 +1667,11 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
           </div>
         </div>
 
-        {/* Showtime with Time Picker */}
+        {/* Showtime */}
         <div style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>Showtime</label>
-            <span style={{ fontSize: 12, color: 'var(--mint)', fontWeight: 600 }}>
-              ⏰ Time Picker
-            </span>
-          </div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>
+            Showtime
+          </label>
 
           <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
             <input
@@ -1745,7 +1734,7 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
           </div>
         </div>
 
-        {/* Update Showtime & Date Green Button matching screenshot */}
+        {/* Update Showtime & Date Green Button */}
         <button
           type="submit"
           disabled={busy}
@@ -1770,582 +1759,291 @@ function AdminDashboardView({ user, setUser, socket, movie, setMovie, notify }) 
   );
 
   return (
-    <div className="admin-wrap" style={{ maxWidth: 1120, margin: '24px auto', padding: '0 24px' }}>
-      {/* Header & Role Switcher */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <h2>Cinema Administration Back-Office</h2>
-          <p style={{ color: 'var(--mute)', fontSize: 13 }}>
-            Active session: <b>{user.email}</b> • Server-enforced role: <span style={{ color: 'var(--accent)', fontWeight: 800 }}>{user.role}</span>
-          </p>
-        </div>
-
-        {/* Quick Staff Role Switcher */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <button className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 10px' }} onClick={() => switchRole('admin@test.com', 'Admin@123')}>
-            👑 Super Admin
-          </button>
-          <button className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 10px' }} onClick={() => switchRole('ops@test.com', 'Ops@1234')}>
-            🎬 Operations
-          </button>
-          <button className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 10px' }} onClick={() => switchRole('support@test.com', 'Support@1234')}>
-            🎧 Support
-          </button>
-          <button className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 10px' }} onClick={() => switchRole('finance@test.com', 'Finance@1234')}>
-            💼 Finance
-          </button>
-        </div>
+    <div className="admin-wrap" style={{ maxWidth: 1140, margin: '24px auto', padding: '0 24px' }}>
+      {/* Header */}
+      <div style={{ marginBottom: 22 }}>
+        <h2 style={{ fontSize: 24, fontWeight: 800, color: 'var(--ink)', marginBottom: 4 }}>Admin Dashboard</h2>
+        <p style={{ color: 'var(--mute)', fontSize: 13, margin: 0 }}>
+          Active session: <b>{user.email}</b>
+        </p>
       </div>
 
-      {/* Admin Navigation Tabs */}
-      <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid var(--line)', paddingBottom: 10, marginBottom: 24, overflowX: 'auto' }}>
-        <button
-          className={tab === 'overview' ? 'btn-primary' : 'btn-ghost'}
-          style={{ fontSize: 13, padding: '7px 16px' }}
-          onClick={() => setTab('overview')}
-        >
-          📊 Live Monitoring & KPIs
-        </button>
-        <button
-          className={tab === 'shows' ? 'btn-primary' : 'btn-ghost'}
-          style={{ fontSize: 13, padding: '7px 16px' }}
-          onClick={() => setTab('shows')}
-        >
-          🎬 Shows & Seat Blocking
-        </button>
-        <button
-          className={tab === 'catalogue' ? 'btn-primary' : 'btn-ghost'}
-          style={{ fontSize: 13, padding: '7px 16px' }}
-          onClick={() => setTab('catalogue')}
-        >
-          🎞️ Movie Catalogue
-        </button>
-        <button
-          className={tab === 'support' ? 'btn-primary' : 'btn-ghost'}
-          style={{ fontSize: 13, padding: '7px 16px' }}
-          onClick={() => setTab('support')}
-        >
-          🎧 Customer Support
-        </button>
-        <button
-          className={tab === 'finance' ? 'btn-primary' : 'btn-ghost'}
-          style={{ fontSize: 13, padding: '7px 16px' }}
-          onClick={() => setTab('finance')}
-        >
-          💼 Finance & Reports
-        </button>
-        <button
-          className={tab === 'audit' ? 'btn-primary' : 'btn-ghost'}
-          style={{ fontSize: 13, padding: '7px 16px' }}
-          onClick={() => setTab('audit')}
-        >
-          🛡️ Audit Log & Moderation
-        </button>
-      </div>
-
-      {/* TAB 1: OVERVIEW & MONITORING */}
-      {tab === 'overview' && (
-        <>
-          {s && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 28 }}>
-              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--mint)' }}>{s.available}</div>
-                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Available Seats</div>
-              </div>
-              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--peach)' }}>{s.held}</div>
-                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Held (2-Min Live)</div>
-              </div>
-              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: '#e11d48' }}>{s.booked}</div>
-                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Confirmed Booked</div>
-              </div>
-              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: '#64748b' }}>{s.blocked || 0}</div>
-                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Blocked (VIP/Maint)</div>
-              </div>
-              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--ink)' }}>{inr(s.revenue)}</div>
-                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Total Revenue</div>
-              </div>
-            </div>
-          )}
-
-          {/* Active Screening Quick Action & Live Recent Bookings Feed */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 1fr', gap: 24 }}>
-            {renderChangeDateTimeCard()}
-
-            <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 20, background: '#fff' }}>
-              <h3 style={{ fontSize: 16, marginBottom: 12 }}>⚡ Live Real-Time Bookings Feed</h3>
-              {s?.recent && s.recent.length > 0 ? (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
-                      <th style={{ padding: '8px' }}>Reference</th>
-                      <th style={{ padding: '8px' }}>Customer</th>
-                      <th style={{ padding: '8px' }}>Seats</th>
-                      <th style={{ padding: '8px' }}>Amount</th>
-                      <th style={{ padding: '8px' }}>Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {s.recent.map((b) => (
-                      <tr key={b.reference} style={{ borderBottom: '1px solid var(--line)' }}>
-                        <td style={{ padding: '9px 8px', fontWeight: 700, color: 'var(--accent)' }}>{b.reference}</td>
-                        <td style={{ padding: '9px 8px' }}>{b.email}</td>
-                        <td style={{ padding: '9px 8px' }}>{b.seats}</td>
-                        <td style={{ padding: '9px 8px', color: 'var(--mint)', fontWeight: 700 }}>{inr(b.total_price)}</td>
-                        <td style={{ padding: '9px 8px', color: 'var(--mute)', fontSize: 12 }}>
-                          {new Date(b.created_at).toLocaleTimeString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <p style={{ color: 'var(--mute)', padding: 14 }}>No bookings recorded yet in this session.</p>
-              )}
-            </div>
+      {/* KPI Stats Summary */}
+      {s && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 24 }}>
+          <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--mint)' }}>{s.available}</div>
+            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Available Seats</div>
           </div>
-        </>
-      )}
-
-      {/* TAB 2: SHOWS & SEAT BLOCKING (Operations) */}
-      {tab === 'shows' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24 }}>
-          {renderChangeDateTimeCard()}
-
-          {/* Seat Blocking Tool */}
-          <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 20, background: '#fff' }}>
-            <h3 style={{ fontSize: 16, marginBottom: 6 }}>VIP / Maintenance Seat Blocking</h3>
-            <p style={{ color: 'var(--mute)', fontSize: 12.5, marginBottom: 14 }}>
-              Block physical seats from customer availability. Live updates broadcast immediately.
-            </p>
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Seat IDs (1 to 100)</label>
-              <input
-                type="text"
-                placeholder="e.g. 1, 2, 3, 4"
-                value={blockSeatIds}
-                onChange={(e) => setBlockSeatIds(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
-              />
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                type="button"
-                className="btn-ghost"
-                style={{ flex: 1, borderColor: '#f87171', color: '#dc2626' }}
-                onClick={() => handleToggleBlockSeats(true)}
-                disabled={busy}
-              >
-                🚫 Block Seats
-              </button>
-              <button
-                type="button"
-                className="btn-ghost"
-                style={{ flex: 1, borderColor: 'var(--mint)', color: 'var(--mint)' }}
-                onClick={() => handleToggleBlockSeats(false)}
-                disabled={busy}
-              >
-                ✅ Unblock
-              </button>
-            </div>
+          <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--peach)' }}>{s.held}</div>
+            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Held (2-Min Live)</div>
+          </div>
+          <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#e11d48' }}>{s.booked}</div>
+            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Confirmed Booked</div>
+          </div>
+          <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#64748b' }}>{s.blocked || 0}</div>
+            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Blocked (VIP/Maint)</div>
+          </div>
+          <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--ink)' }}>{inr(s.revenue)}</div>
+            <div style={{ fontSize: 12, color: 'var(--mute)' }}>Total Revenue</div>
           </div>
         </div>
       )}
 
-      {/* TAB 3: MOVIE CATALOGUE */}
-      {tab === 'catalogue' && (
-        <div>
-          {/* Add New Movie Form */}
-          <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 22, background: '#fff', marginBottom: 24 }}>
-            <h3 style={{ fontSize: 17, marginBottom: 4 }}>Add Movie to Catalogue</h3>
-            <form onSubmit={handleAddNewMovie}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 14 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Title</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Ramayana - Part 2"
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
-                    value={newMovieForm.title}
-                    onChange={(e) => setNewMovieForm({ ...newMovieForm, title: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Poster URL</label>
-                  <input
-                    type="text"
-                    placeholder="/poster-chronos.svg"
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
-                    value={newMovieForm.poster_url}
-                    onChange={(e) => setNewMovieForm({ ...newMovieForm, poster_url: e.target.value })}
-                  />
-                </div>
-              </div>
+      {/* Main Controls Row: Change Date & Time + Live Recent Bookings Feed */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 1fr', gap: 24, marginBottom: 24 }}>
+        {renderChangeDateTimeCard()}
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 14 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Genres</label>
-                  <input
-                    type="text"
-                    placeholder="Action • Epic • Drama"
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
-                    value={newMovieForm.genres}
-                    onChange={(e) => setNewMovieForm({ ...newMovieForm, genres: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Languages</label>
-                  <input
-                    type="text"
-                    placeholder="Hindi, Telugu"
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
-                    value={newMovieForm.language}
-                    onChange={(e) => setNewMovieForm({ ...newMovieForm, language: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Synopsis</label>
-                <textarea
-                  rows={2}
-                  placeholder="Plot summary..."
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6, font: 'inherit', fontSize: 13 }}
-                  value={newMovieForm.synopsis}
-                  onChange={(e) => setNewMovieForm({ ...newMovieForm, synopsis: e.target.value })}
-                />
-              </div>
-
-              {/* Premiere Date (Calendar Picker) and Showtime Picker */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 16 }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <label style={{ fontSize: 12, fontWeight: 600 }}>Premiere Date (Calendar Picker)</label>
-                    <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600 }}>📅 Calendar</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                    <input
-                      type="date"
-                      aria-label="New movie premiere calendar date"
-                      value={newMovieCalDate}
-                      onChange={(e) => {
-                        setNewMovieCalDate(e.target.value);
-                        setNewMovieForm((prev) => ({ ...prev, date_str: formatDateWithDay(e.target.value) }));
-                      }}
-                      style={{
-                        padding: '8px 10px',
-                        border: '1.5px solid var(--accent)',
-                        borderRadius: 6,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        background: '#faf9ff',
-                        color: 'var(--ink)',
-                      }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="e.g. Friday, 27 November, 2026"
-                      value={newMovieForm.date_str}
-                      onChange={(e) => setNewMovieForm({ ...newMovieForm, date_str: e.target.value })}
-                      style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13, fontWeight: 600 }}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      style={{ fontSize: 11, padding: '2px 7px' }}
-                      onClick={() => {
-                        setNewMovieCalDate('2026-11-27');
-                        setNewMovieForm((prev) => ({ ...prev, date_str: 'Friday, 27 November, 2026' }));
-                      }}
-                    >
-                      🌟 Friday, 27 Nov (Premiere)
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      style={{ fontSize: 11, padding: '2px 7px' }}
-                      onClick={() => {
-                        setNewMovieCalDate('2026-11-28');
-                        setNewMovieForm((prev) => ({ ...prev, date_str: 'Saturday, 28 November, 2026' }));
-                      }}
-                    >
-                      Saturday, 28 Nov
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <label style={{ fontSize: 12, fontWeight: 600 }}>Premiere Showtime (Time Picker)</label>
-                    <span style={{ fontSize: 11, color: 'var(--mint)', fontWeight: 600 }}>⏰ Clock</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                    <input
-                      type="time"
-                      aria-label="New movie premiere time"
-                      value={newMovieCalTime}
-                      onChange={(e) => {
-                        setNewMovieCalTime(e.target.value);
-                        setNewMovieForm((prev) => ({ ...prev, time_str: formatTime12h(e.target.value) }));
-                      }}
-                      style={{
-                        padding: '8px 10px',
-                        border: '1.5px solid var(--accent)',
-                        borderRadius: 6,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        background: '#faf9ff',
-                        color: 'var(--ink)',
-                      }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="e.g. 10:00 PM"
-                      value={newMovieForm.time_str}
-                      onChange={(e) => setNewMovieForm({ ...newMovieForm, time_str: e.target.value })}
-                      style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13, fontWeight: 600 }}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {['10:00 PM', '07:30 PM', '06:00 PM', '04:15 PM'].map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        className="btn-ghost"
-                        style={{ fontSize: 11, padding: '2px 7px' }}
-                        onClick={() => {
-                          setNewMovieCalTime(timeStrTo24h(t));
-                          setNewMovieForm((prev) => ({ ...prev, time_str: t }));
-                        }}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <button type="submit" disabled={busy} className="btn-primary" style={{ padding: '10px 20px' }}>
-                {busy ? 'Saving...' : 'Publish Movie'}
-              </button>
-            </form>
-          </div>
-
-          {/* Catalogue List */}
-          <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 20, background: '#fff' }}>
-            <h3 style={{ fontSize: 16, marginBottom: 12 }}>Movies in Database ({history.length})</h3>
+        {/* Live Recent Bookings Feed */}
+        <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 20, background: '#fff' }}>
+          <h3 style={{ fontSize: 16, marginBottom: 12 }}>⚡ Live Real-Time Bookings Feed</h3>
+          {s?.recent && s.recent.length > 0 ? (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
-                  <th style={{ padding: 8 }}>ID</th>
-                  <th style={{ padding: 8 }}>Title</th>
-                  <th style={{ padding: 8 }}>Language</th>
-                  <th style={{ padding: 8 }}>Certificate</th>
-                  <th style={{ padding: 8 }}>Status</th>
+                  <th style={{ padding: '8px' }}>Reference</th>
+                  <th style={{ padding: '8px' }}>Customer</th>
+                  <th style={{ padding: '8px' }}>Seats</th>
+                  <th style={{ padding: '8px' }}>Amount</th>
+                  <th style={{ padding: '8px' }}>Time</th>
                 </tr>
               </thead>
               <tbody>
-                {history.map((m) => (
-                  <tr key={m.id} style={{ borderBottom: '1px solid var(--line)' }}>
-                    <td style={{ padding: 8 }}>#{m.id}</td>
-                    <td style={{ padding: 8 }}><b>{m.title}</b></td>
-                    <td style={{ padding: 8 }}>{m.language}</td>
-                    <td style={{ padding: 8 }}>{m.certificate}</td>
-                    <td style={{ padding: 8 }}>
-                      <span style={{ background: 'var(--mint-soft)', color: 'var(--mint)', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                        {m.status || 'Active'}
-                      </span>
+                {s.recent.map((b) => (
+                  <tr key={b.reference} style={{ borderBottom: '1px solid var(--line)' }}>
+                    <td style={{ padding: '9px 8px', fontWeight: 700, color: 'var(--accent)' }}>{b.reference}</td>
+                    <td style={{ padding: '9px 8px' }}>{b.email}</td>
+                    <td style={{ padding: '9px 8px' }}>{b.seats}</td>
+                    <td style={{ padding: '9px 8px', color: 'var(--mint)', fontWeight: 700 }}>{inr(b.total_price)}</td>
+                    <td style={{ padding: '9px 8px', color: 'var(--mute)', fontSize: 12 }}>
+                      {new Date(b.created_at).toLocaleTimeString()}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          ) : (
+            <p style={{ color: 'var(--mute)', padding: 14 }}>No bookings recorded yet in this session.</p>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* TAB 4: SUPPORT DESK */}
-      {tab === 'support' && (
-        <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 20, background: '#fff' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h3 style={{ fontSize: 16 }}>Booking Lookup & Refund Desk</h3>
+      {/* Secondary Controls Row: Add Movie to Catalogue + VIP Seat Blocking */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24, marginBottom: 24 }}>
+        {/* Add Movie to Catalogue Form */}
+        <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff' }}>
+          <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>Add Movie to Catalogue</h3>
+          <p style={{ color: 'var(--mute)', fontSize: 12.5, marginBottom: 16 }}>
+            Publish a new movie title to the theatre catalogue.
+          </p>
+          <form onSubmit={handleAddNewMovie}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Title</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Ramayana - Part 2"
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
+                  value={newMovieForm.title}
+                  onChange={(e) => setNewMovieForm({ ...newMovieForm, title: e.target.value })}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Poster URL</label>
+                <input
+                  type="text"
+                  placeholder="/poster-chronos.svg"
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
+                  value={newMovieForm.poster_url}
+                  onChange={(e) => setNewMovieForm({ ...newMovieForm, poster_url: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Genres</label>
+                <input
+                  type="text"
+                  placeholder="Action • Epic • Drama"
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
+                  value={newMovieForm.genres}
+                  onChange={(e) => setNewMovieForm({ ...newMovieForm, genres: e.target.value })}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Language</label>
+                <input
+                  type="text"
+                  placeholder="Hindi, Telugu"
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
+                  value={newMovieForm.language}
+                  onChange={(e) => setNewMovieForm({ ...newMovieForm, language: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Synopsis</label>
+              <textarea
+                rows={2}
+                placeholder="Plot summary..."
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 6, font: 'inherit', fontSize: 13 }}
+                value={newMovieForm.synopsis}
+                onChange={(e) => setNewMovieForm({ ...newMovieForm, synopsis: e.target.value })}
+              />
+            </div>
+
+            {/* Premiere Date and Showtime */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 16 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Premiere Date</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="date"
+                    aria-label="New movie premiere date"
+                    value={newMovieCalDate}
+                    onChange={(e) => {
+                      setNewMovieCalDate(e.target.value);
+                      setNewMovieForm((prev) => ({ ...prev, date_str: formatDateWithDay(e.target.value) }));
+                    }}
+                    style={{
+                      padding: '8px 10px',
+                      border: '1.5px solid var(--accent)',
+                      borderRadius: 6,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      background: '#faf9ff',
+                      color: 'var(--ink)',
+                    }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="e.g. Friday, 27 November, 2026"
+                    value={newMovieForm.date_str}
+                    onChange={(e) => setNewMovieForm({ ...newMovieForm, date_str: e.target.value })}
+                    style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13, fontWeight: 600 }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Premiere Showtime</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="time"
+                    aria-label="New movie premiere showtime"
+                    value={newMovieCalTime}
+                    onChange={(e) => {
+                      setNewMovieCalTime(e.target.value);
+                      setNewMovieForm((prev) => ({ ...prev, time_str: formatTime12h(e.target.value) }));
+                    }}
+                    style={{
+                      padding: '8px 10px',
+                      border: '1.5px solid var(--accent)',
+                      borderRadius: 6,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      background: '#faf9ff',
+                      color: 'var(--ink)',
+                    }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="e.g. 10:00 PM"
+                    value={newMovieForm.time_str}
+                    onChange={(e) => setNewMovieForm({ ...newMovieForm, time_str: e.target.value })}
+                    style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13, fontWeight: 600 }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" disabled={busy} className="btn-primary" style={{ padding: '10px 22px' }}>
+              {busy ? 'Publishing...' : 'Publish Movie'}
+            </button>
+          </form>
+        </div>
+
+        {/* Seat Blocking Tool */}
+        <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff' }}>
+          <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>VIP / Maintenance Seat Blocking</h3>
+          <p style={{ color: 'var(--mute)', fontSize: 12.5, marginBottom: 14 }}>
+            Block physical seats from customer availability. Live updates broadcast immediately.
+          </p>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Seat IDs (1 to 100)</label>
             <input
               type="text"
-              placeholder="Search by Reference (CX...) or Email"
-              value={searchQ}
-              onChange={(e) => { setSearchQ(e.target.value); loadSupportBookings(e.target.value); }}
-              style={{ padding: '7px 12px', fontSize: 13, border: '1px solid var(--line)', borderRadius: 6, width: 260 }}
+              placeholder="e.g. 1, 2, 3, 4"
+              value={blockSeatIds}
+              onChange={(e) => setBlockSeatIds(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', border: '1px solid var(--line)', borderRadius: 6 }}
             />
           </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              type="button"
+              className="btn-ghost"
+              style={{ flex: 1, borderColor: '#f87171', color: '#dc2626', padding: '10px' }}
+              onClick={() => handleToggleBlockSeats(true)}
+              disabled={busy}
+            >
+              🚫 Block Seats
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              style={{ flex: 1, borderColor: 'var(--mint)', color: 'var(--mint)', padding: '10px' }}
+              onClick={() => handleToggleBlockSeats(false)}
+              disabled={busy}
+            >
+              ✅ Unblock Seats
+            </button>
+          </div>
+        </div>
+      </div>
 
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
-                <th style={{ padding: 8 }}>Reference</th>
-                <th style={{ padding: 8 }}>Customer</th>
-                <th style={{ padding: 8 }}>Seats</th>
-                <th style={{ padding: 8 }}>Total Paid</th>
-                <th style={{ padding: 8 }}>Status</th>
-                <th style={{ padding: 8 }}>Actions</th>
+      {/* Movies in Database (Catalogue) Table */}
+      <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 22, background: '#fff', marginBottom: 24 }}>
+        <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Movies in Database ({history.length})</h3>
+        <p style={{ color: 'var(--mute)', fontSize: 12.5, marginBottom: 14 }}>
+          Previous and current movies stored in the cinema catalogue.
+        </p>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
+              <th style={{ padding: '9px 8px' }}>ID</th>
+              <th style={{ padding: '9px 8px' }}>Title</th>
+              <th style={{ padding: '9px 8px' }}>Language</th>
+              <th style={{ padding: '9px 8px' }}>Certificate</th>
+              <th style={{ padding: '9px 8px' }}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((m) => (
+              <tr key={m.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                <td style={{ padding: '9px 8px' }}>#{m.id}</td>
+                <td style={{ padding: '9px 8px' }}><b>{m.title}</b></td>
+                <td style={{ padding: '9px 8px' }}>{m.language}</td>
+                <td style={{ padding: '9px 8px' }}>{m.certificate}</td>
+                <td style={{ padding: '9px 8px' }}>
+                  <span style={{ background: 'var(--mint-soft)', color: 'var(--mint)', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                    {m.status || 'Active'}
+                  </span>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {supportBookings.map((b) => (
-                <tr key={b.id} style={{ borderBottom: '1px solid var(--line)' }}>
-                  <td style={{ padding: 8, fontWeight: 700, color: 'var(--accent)' }}>{b.reference}</td>
-                  <td style={{ padding: 8 }}>{b.email || 'Customer'}</td>
-                  <td style={{ padding: 8 }}>{b.seats?.map((s) => s.label).join(', ')}</td>
-                  <td style={{ padding: 8, color: 'var(--mint)', fontWeight: 700 }}>{inr(b.total_price)}</td>
-                  <td style={{ padding: 8 }}>
-                    <span style={{
-                      background: b.status === 'confirmed' ? 'var(--mint-soft)' : '#fee2e2',
-                      color: b.status === 'confirmed' ? 'var(--mint)' : '#dc2626',
-                      padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700
-                    }}>
-                      {b.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: 8 }}>
-                    {b.status === 'confirmed' && (
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        style={{ padding: '4px 10px', fontSize: 11, borderColor: '#f87171', color: '#dc2626' }}
-                        onClick={() => handleSupportCancel(b.id)}
-                      >
-                        Refund & Cancel
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* TAB 5: FINANCE & EXPORTS */}
-      {tab === 'finance' && (
-        <div>
-          {financeSummary && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
-              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
-                <div style={{ fontSize: 24, fontWeight: 800 }}>{inr(financeSummary.totals?.gross_revenue || 0)}</div>
-                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Gross Ticket Revenue</div>
-              </div>
-              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
-                <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--mint)' }}>{inr(financeSummary.totals?.total_discounts || 0)}</div>
-                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Promo Discounts</div>
-              </div>
-              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
-                <div style={{ fontSize: 24, fontWeight: 800 }}>{inr(financeSummary.totals?.total_convenience_fees || 0)}</div>
-                <div style={{ fontSize: 12, color: 'var(--mute)' }}>Convenience Fees</div>
-              </div>
-              <div style={{ padding: 16, border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
-                <div style={{ fontSize: 24, fontWeight: 800 }}>{inr(financeSummary.totals?.total_gst || 0)}</div>
-                <div style={{ fontSize: 12, color: 'var(--mute)' }}>GST Collected (18%)</div>
-              </div>
-            </div>
-          )}
-
-          <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 20, background: '#fff', marginBottom: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h3 style={{ fontSize: 16 }}>Financial Reconciliation & CSV Export</h3>
-              <a
-                href="/api/admin/finance/export"
-                download="theticketroom-finance-report.csv"
-                className="btn-primary"
-                style={{ textDecoration: 'none', padding: '8px 18px', fontSize: 13 }}
-              >
-                📥 Download CSV Export for Accountants
-              </a>
-            </div>
-            <p style={{ color: 'var(--mute)', fontSize: 13 }}>
-              Generate complete accounting ledgers with reference IDs, movie titles, subtotal, discount, GST, and gateway settlement timestamps.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 6: AUDIT TRAIL & USER MODERATION */}
-      {tab === 'audit' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24 }}>
-          {/* Append-only Audit Logs */}
-          <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 20, background: '#fff' }}>
-            <h3 style={{ fontSize: 16, marginBottom: 12 }}>Append-Only Security Audit Trail</h3>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
-                  <th style={{ padding: 6 }}>Action</th>
-                  <th style={{ padding: 6 }}>Admin</th>
-                  <th style={{ padding: 6 }}>Reason</th>
-                  <th style={{ padding: 6 }}>Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {auditLogs.map((a) => (
-                  <tr key={a.id} style={{ borderBottom: '1px solid var(--line)' }}>
-                    <td style={{ padding: 6, fontWeight: 700 }}>{a.action}</td>
-                    <td style={{ padding: 6 }}>{a.admin_email || 'System'}</td>
-                    <td style={{ padding: 6, color: 'var(--mute)' }}>{a.reason || 'N/A'}</td>
-                    <td style={{ padding: 6, color: '#888' }}>{new Date(a.created_at).toLocaleTimeString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* User Account Moderation */}
-          <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 20, background: '#fff' }}>
-            <h3 style={{ fontSize: 16, marginBottom: 12 }}>Customer Accounts & Moderation</h3>
-            <div style={{ maxHeight: 420, overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--mute)', textAlign: 'left' }}>
-                    <th style={{ padding: 6 }}>User</th>
-                    <th style={{ padding: 6 }}>Bookings</th>
-                    <th style={{ padding: 6 }}>Status</th>
-                    <th style={{ padding: 6 }}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usersList.slice(0, 30).map((u) => (
-                    <tr key={u.id} style={{ borderBottom: '1px solid var(--line)' }}>
-                      <td style={{ padding: 6 }}>{u.email}</td>
-                      <td style={{ padding: 6 }}>{u.bookings_count}</td>
-                      <td style={{ padding: 6 }}>
-                        {u.is_suspended ? (
-                          <span style={{ color: '#dc2626', fontWeight: 700 }}>Suspended</span>
-                        ) : (
-                          <span style={{ color: 'var(--mint)', fontWeight: 700 }}>Active</span>
-                        )}
-                      </td>
-                      <td style={{ padding: 6 }}>
-                        <button
-                          type="button"
-                          className="btn-ghost"
-                          style={{ padding: '2px 8px', fontSize: 10.5 }}
-                          onClick={() => handleToggleSuspendUser(u)}
-                        >
-                          {u.is_suspended ? 'Unsuspend' : 'Suspend'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
