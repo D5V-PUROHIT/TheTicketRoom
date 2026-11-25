@@ -949,7 +949,7 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
           <div className="bottom-screen-text">Screen Direction</div>
         </div>
 
-        {/* BMS-style Legend */}
+        {/* Auditorium Status Legend */}
         <div className="theatre-legend">
           <div className="leg-item">
             <span className="leg-box"></span>
@@ -1079,7 +1079,7 @@ function TheatreSeatSelection({ user, movie, socket, online, notify, onOpenAuth,
         key={s.id}
         id={`seat-${s.id}`}
         type="button"
-        className={`bms-seat ${stClass} ${isPulsing ? 'peer-pulse' : ''}`}
+        className={`auditorium-seat ${stClass} ${isPulsing ? 'peer-pulse' : ''}`}
         disabled={isSold || isPeerHeld || isBlocked}
         onClick={() => pick(s)}
         title={isBlocked ? `Seat ${s.row_label}${pad(s.seat_number)} • Reserved for Maintenance/VIP` : `Seat ${s.row_label}${pad(s.seat_number)} • ${inr(s.price)}`}

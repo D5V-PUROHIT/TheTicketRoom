@@ -522,7 +522,7 @@ button:focus-visible, input:focus-visible {
 .cast-card span { font-size: 11.5px; color: var(--mute); }
 
 /* ==========================================================
-   THEATRE SEATING EXPERIENCE (BookMyShow / Diagram Style)
+   THEATRE SEATING EXPERIENCE (TheTicketRoom Auditorium)
    ========================================================== */
 .theatre-screen-view {
   background: #ffffff;
@@ -705,7 +705,7 @@ button:focus-visible, input:focus-visible {
 .aisle-gap { width: 30px; }
 
 /* Individual Seat Styling */
-.bms-seat {
+.auditorium-seat {
   width: 33px;
   height: 31px;
   border-radius: 4px;
@@ -721,29 +721,29 @@ button:focus-visible, input:focus-visible {
   transition: all 0.12s ease;
   padding: 0;
 }
-.bms-seat:hover:not(:disabled) {
+.auditorium-seat:hover:not(:disabled) {
   background: var(--mint-soft);
   transform: translateY(-2px);
 }
-.bms-seat:focus-visible {
+.auditorium-seat:focus-visible {
   outline: 2.5px solid var(--accent);
   outline-offset: 1px;
 }
 
-.bms-seat.mine {
+.auditorium-seat.mine {
   background: var(--selected-bg) !important;
   border-color: var(--selected-bg) !important;
   color: var(--selected-text) !important;
   font-weight: 700;
   box-shadow: 0 2px 8px rgba(56, 194, 143, 0.4);
 }
-.bms-seat.booked {
+.auditorium-seat.booked {
   background: var(--sold-bg) !important;
   border-color: var(--sold-border) !important;
   color: var(--sold-text) !important;
   cursor: not-allowed;
 }
-.bms-seat.held {
+.auditorium-seat.held {
   border-color: var(--held-border) !important;
   color: var(--held-text) !important;
   background: var(--held-bg);
@@ -755,7 +755,7 @@ button:focus-visible, input:focus-visible {
   50% { transform: scale(1.15); filter: brightness(1.3); box-shadow: 0 0 12px var(--peach); }
   100% { transform: scale(1); filter: brightness(1); }
 }
-.bms-seat.peer-pulse { animation: peer-flash 0.6s ease-out; }
+.auditorium-seat.peer-pulse { animation: peer-flash 0.6s ease-out; }
 
 /* Bottom Screen Bar Line */
 .bottom-screen-bar {
@@ -1059,7 +1059,7 @@ button:focus-visible, input:focus-visible {
   .details-hero-card { grid-template-columns: 1fr; }
   .cast-grid { grid-template-columns: repeat(2, 1fr); }
   .tiers-pricing-bar { grid-template-columns: 1fr; }
-  .bms-seat { width: 27px; height: 27px; font-size: 9.5px; }
+  .auditorium-seat { width: 27px; height: 27px; font-size: 9.5px; }
   .seat-block.full-10 { gap: 4px; }
   .seat-block.wing-2, .seat-block.center-6 { gap: 4px; }
   .aisle-gap { width: 14px; }
