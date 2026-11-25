@@ -1,4 +1,4 @@
-# Lumen Cinema: Seat Booking System
+# TheTicketRoom: Real-Time Seat Booking System
 
 Real-time seat booking for a single screening (one movie, 10:00 PM, one hall, 100 seats in a 10 x 10 grid) built to stay correct when hundreds of users book at the same moment.
 

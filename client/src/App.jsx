@@ -42,7 +42,7 @@ export default function App() {
   return (
     <>
       <header className="top">
-        <div className="brand"><i />Lumen Cinema</div>
+        <div className="brand"><i />TheTicketRoom</div>
         <nav className="tabs">
           {[['book', 'Book seats'], ['mine', 'My bookings'], ...(user.role === 'admin' ? [['admin', 'Admin']] : [])].map(([k, l]) =>
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
