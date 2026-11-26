@@ -29,8 +29,10 @@ router.post('/register', catchAsync(async (req, res) => {
   if (typeof email !== 'string' || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     throw new AppError(400, 'VALIDATION', 'Enter a valid email');
   }
-  if (typeof password !== 'string' || password.length < 8 || password.length > 72) {
-    throw new AppError(400, 'VALIDATION', 'Password must be 8 to 72 characters');
+  const { evaluatePassword } = await import('../../shared/passwordPolicy.mjs');
+  const pwCheck = evaluatePassword(password);
+  if (!pwCheck.valid) {
+    throw new AppError(400, 'VALIDATION', pwCheck.errorMessage);
   }
 
   const hash = await bcrypt.hash(password, 10);
