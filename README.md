@@ -1,6 +1,6 @@
 # TheTicketRoom
 
-A full-stack, real-time cinema seat reservation and theatre operations platform built with **PostgreSQL, Express, Socket.IO, and React (Vite)**. Designed for high-concurrency ticketing workloads, strict transactional seat locking, idempotent checkout, automated showtime cutoffs, Indian GST slab invoicing, smart seat recommendations, and role-based back-office operations.
+A full-stack, real-time cinema seat reservation and theatre operations platform built with **PostgreSQL, Express, Socket.IO, and React (Vite)**. Designed for high-concurrency ticketing workloads, strict transactional seat locking, idempotent checkout, automated showtime cutoffs, Indian GST slab invoicing, smart seat recommendations, Google Sign-In, and role-based back-office operations.
 
 **Live Application:** [https://theticketroom.onrender.com](https://theticketroom.onrender.com)
 
@@ -17,18 +17,12 @@ A full-stack, real-time cinema seat reservation and theatre operations platform 
   - **1 Seat**: Randomly selects an available seat in **Recliner → Club → Premium** priority order.
   - **2 Seats**: Prioritizes left/right wing pairs (**`1–2`** or **`9–10`**), then adjacent pairs inside center rows (**`3–8`**), falling back to the two closest single seats if no adjacent pair exists.
   - **3 or 4 Seats**: Prioritizes contiguous seats inside center **`3–8`**, falling back to continuous row availability or the tightest cluster of nearby seats.
+- **Authentication**: Supports email/password registration & login (`bcrypt` + 8-hour JWT) as well as **Continue with Google** via server-verified Google Identity Services ID tokens.
 - **2-Minute Seat Hold Timer & QR e-Tickets**: Holds selected seats with a countdown timer and urgency alert (`<= 30s`), supports promo codes and one-click ticket cancellation, and generates scannable QR code boarding passes.
-
-### Concurrency Safety & Transactional Integrity
-- **Deadlock-Free Row Locking**: Seat IDs are deduplicated and locked in strictly ascending order (`SELECT ... FOR UPDATE ORDER BY id`) inside PostgreSQL transactions.
-- **User-Row Serialization**: Locks the caller's row in `users` (`FOR UPDATE`) before evaluating quotas so concurrent parallel requests from the same account cannot exceed the 4-seat cap.
-- **Atomic All-or-Nothing Holds**: If any seat in a multi-seat request is unavailable, the transaction rolls back and returns HTTP `409 SEAT_UNAVAILABLE`.
-- **Idempotent Checkout**: Unique database constraint on `(user_id, idempotency_key)` ensures duplicate clicks or network retries safely replay the confirmed booking (`HTTP 200`, `replayed: true`) without double charging.
-- **Automatic Hold & Showtime Sweeper**: A background task runs every `3 seconds` to release expired 2-minute holds and transition past shows cleanly.
 
 ### Showtime Lifecycle & Schedule Protection
 - **Automatic Booking Cutoff**: Holds and checkout stop immediately once a show reaches `starts_at` (configurable earlier via `BOOKING_CUTOFF_MINUTES`), returning `409 SHOW_STARTED` / `BOOKING_CLOSED`.
-- **Auto-Close & Public Filtering**: Open show queries exclude expired shows immediately, and the background sweeper marks them `closed` while preserving all confirmed bookings and releasing uncommitted holds.
+- **Auto-Close & Public Filtering**: Open show queries exclude expired shows immediately, and the background sweeper marks them `closed` while preserving confirmed bookings and releasing uncommitted holds.
 - **Schedule & Cancellation Locks**: Once `booked > 0`, admins cannot modify that show's date/time (`409 SCHEDULE_LOCKED`) or cancel it (`409 SHOW_HAS_BOOKINGS`); new screenings must be added as separate showtimes. Unbooked shows (`0` tickets sold) remain editable and cancellable.
 
 ### Indian GST Slabs & Platform Pricing
@@ -45,6 +39,42 @@ Server-enforced permissions (`requireRole(...)`) power a 6-tab operations portal
 4. **Customer Support**: Search reservations by booking reference (`CX...`), customer email, or name, and process cancellations/refunds with mandatory audit reasons.
 5. **Finance & Reports**: View gross ticket revenue, discounts, platform fees, and CGST + SGST totals, with one-click CSV ledger export.
 6. **Audit Log & Moderation**: Inspect the append-only `audit_logs` register and suspend/reactivate user accounts.
+
+---
+
+## Database Schema & Double-Booking Prevention
+
+### Relational Database Schema (`backend/database/schema.sql`)
+- **`users`**: Stores `id`, `name`, `email` (`UNIQUE`), nullable `password_hash`, `google_id` (`UNIQUE`), `role` (`CHECK` constraint across customer & staff roles), and `is_suspended`.
+- **`halls` & `hall_seats`**: Physical theatre definitions (`100` template seats arranged in rows `A–J`, seats `1–10`).
+- **`movies` & `shows`**: Screening catalogue linked to shows (`starts_at TIMESTAMPTZ`, `date_str`, `time_str`, tier prices, and `status IN ('scheduled', 'open', 'paused', 'closed', 'cancelled')`).
+- **`show_seats`**: Stores per-show inventory (`UNIQUE (show_id, row_label, seat_number)`), with a table-level `CHECK` constraint enforcing valid state transitions (`available`, `held` with `held_by` and `hold_expires_at`, `booked` with `booking_id`, or `blocked`). An updatable PostgreSQL view named `seats` maps directly to `show_seats WHERE show_id = 1 WITH CHECK OPTION` for single-show compatibility.
+- **`bookings`**: Records confirmed and cancelled orders with `reference` (`UNIQUE`), `show_id`, itemized pricing (`subtotal`, `discount_amount`, `convenience_fee`, `gst_amount`, `total_price`), and `UNIQUE (user_id, idempotency_key)`.
+- **`payments`, `coupons`, `coupon_redemptions`, `refunds`, `audit_logs`**: Financial ledger entries, promotional rule tracking, and immutable administrative audit trails.
+
+### How Double-Booking Is Prevented Under High Concurrency
+When hundreds of concurrent users race for the same seats at the same millisecond, consistency is enforced inside PostgreSQL transactions using five safeguards:
+
+1. **User-Row Serialization (`SELECT 1 FROM users WHERE id = $1 FOR UPDATE`)**:
+   Locking the caller's user row first serializes concurrent requests coming from the same account, making it impossible for parallel tabs or scripts to bypass the strict 4-seat per-user limit.
+2. **Deadlock-Free Ascending Row Locks (`ORDER BY id FOR UPDATE`)**:
+   Requested seat IDs are deduplicated and PostgreSQL acquires exclusive row locks across both newly requested seats and the user's existing holds in strictly ascending primary-key (`id`) order. Because every transaction locks resources in the exact same order, circular waits (deadlocks) cannot occur.
+3. **Post-Lock Expiry Evaluation**:
+   Seat availability is evaluated only after row locks are held. Any `held` seat whose `hold_expires_at <= now()` is immediately treated as expired and claimable even before the background sweeper runs, ensuring accurate state transitions without race gaps.
+4. **All-or-Nothing Atomic Holds & Clean Conflict Errors**:
+   If even one seat in a multi-seat hold is already `booked`, `blocked`, or actively held by another user, the entire transaction rolls back cleanly and returns **HTTP `409 SEAT_UNAVAILABLE`** with the conflicting seat label(s) — never partial holds or `500` errors.
+5. **Idempotent Booking Confirmation (`UNIQUE (user_id, idempotency_key)`)**:
+   Checkout queries `bookings` for `(user_id, idempotency_key)` inside the booking transaction. Duplicate clicks or network retries safely return the original confirmed booking (`HTTP 200`, `replayed: true`) instead of creating duplicate charges or seats. A background sweeper runs every `3 seconds` to release expired 2-minute holds and broadcast real-time updates to all connected clients.
+
+---
+
+## Design Assumptions
+
+- **4-Seat Limit Scope**: The maximum of 4 seats per user applies per show across all active confirmed bookings plus currently held seats (`owned + requested <= 4`). Cancelling a booking in **My Bookings** immediately frees seats within that quota.
+- **Default Show & Multi-Show Extension**: Show `#1` (*Baahubali: The Beginning*, `Friday, 27 November, 2026` at `10:00 PM`, Hall `1`, `100` seats) starts as `open`, while additional movies (`Ramayana - Hindi`, `Starlight Horizon`) are seeded as `scheduled` upcoming shows. Each show owns isolated `show_seats` rows so parallel activity across shows never contends for locks.
+- **Showtime Booking Cutoff**: `BOOKING_CUTOFF_MINUTES` defaults to `0` (online holds and checkouts close at `starts_at`, returning `409 SHOW_STARTED` / `BOOKING_CLOSED`, and expired shows are marked `closed` automatically while retaining existing bookings).
+- **Schedule Lock Policy**: Shows with `0` bookings can have their schedule edited or be cancelled freely; shows with `booked > 0` are locked (`409 SCHEDULE_LOCKED` / `SHOW_HAS_BOOKINGS`) so existing ticket holders are never moved to a different time without consent.
+- **Pricing & Payment Integrations**: Ticket GST follows price slabs (`<= ₹100`: `5%`, `> ₹100`: `18%`) with a flat `₹20` Platform Fee and no tax on the Platform Fee. Payment order creation (`paymentGatewayService.js`) and confirmation emails (`emailNotificationService.js`) run with deterministic local/test-mode adapters so external sandbox outages never block ticketing workflows.
 
 ---
 
@@ -78,7 +108,7 @@ TheTicketRoom/
 │   │   ├── seatBroadcast.js              # Pushes live WebSocket seat deltas per show
 │   │   └── showtimeParser.js             # Parses human-readable dates/times into IST (+05:30) timestamps
 │   └── routes/
-│       ├── authRoutes.js                 # /api/auth/register & /api/auth/login
+│       ├── authRoutes.js                 # /api/auth/register, /api/auth/login & /api/auth/google
 │       ├── movieAndShowRoutes.js         # /api/movie, /api/movies, /api/shows
 │       ├── seatRoutes.js                 # /api/seats & /api/shows/:showId/seats
 │       ├── bookingRoutes.js              # Holds, booking checkout, history & cancellation
@@ -186,18 +216,20 @@ TheTicketRoom/
 - **PostgreSQL** `14+`
 - **k6** (optional, for running `scripts/race.k6.js`)
 
-### Configuration
-Copy `.env.example` to `.env` and configure your database connection and JWT secret:
+### Environment Configuration (`.env.example`)
+Copy `.env.example` to `.env` and fill in your PostgreSQL URL and JWT secret:
 
 ```env
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/cinema
 JWT_SECRET=replace-with-a-long-random-string
 PORT=3000
+# Set to true for hosted Postgres that requires SSL (Render, Railway, Neon)
 PGSSL=false
+# Google OAuth 2.0 Web Client ID for "Continue with Google"
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 ```
 
 Optional environment variables:
-- `GOOGLE_CLIENT_ID`: Google Cloud Web OAuth Client ID to enable "Continue with Google" sign-in.
 - `BOOKING_CUTOFF_MINUTES` (default `0`): Closes online holds/bookings that many minutes before `starts_at`.
 - `PG_MAX_POOL` (default `50`): PostgreSQL connection pool size.
 - `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET`: Gateway credentials for payment order/webhook signatures.
@@ -208,7 +240,7 @@ Optional environment variables:
 # 1. Install backend dependencies
 npm install
 
-# 2. Seed database (hall, 4 movies, 3 shows, 300 seats, 500 customers, staff, coupons)
+# 2. Initialize schema and seed database
 npm run seed
 
 # 3. Install frontend dependencies and build production bundle (frontend/dist)
@@ -219,6 +251,27 @@ npm start
 ```
 
 For active development, run `npm run dev` (watches `backend/server.js`) and `npm --prefix frontend run dev` (Vite dev server proxying `/api` and `/socket.io` to port `3000`).
+
+### Seed Script Usage (`npm run seed`)
+Running `npm run seed` executes [`backend/database/seedSampleData.js`](backend/database/seedSampleData.js), which applies `schema.sql`, resets active holds/bookings, creates Hall 1 (`100` seats), seeds `4` movies, `3` shows (`300` `show_seats` rows), the backward-compatible `seats` view for Show `#1`, `500` customer test users, `5` staff roles, and active promo coupons. *(In fresh hosted environments, [`backend/database/startupSetup.js`](backend/database/startupSetup.js) also auto-initializes tables and baseline data at server startup if empty.)*
+
+---
+
+## Test & Admin Credentials
+
+### Test User Credentials
+- **Email Range**: `user1@test.com` through `user500@test.com` (`500` seeded customer accounts)
+- **Password (all test users)**: `Test@1234`
+- **Promo Coupons**: `TICKET50` (`₹50` flat discount, min order `₹200`) and `CINEMA20` (`20%` off up to `₹100`, min order `₹300`)
+
+### Admin & Staff Credentials
+| Role | Email | Password | Permissions |
+|---|---|---|---|
+| **Super Admin** | `admin@test.com` | `Admin@123` | Full dashboard, audit logs, user moderation |
+| **Operations** | `ops@test.com` | `Ops@1234` | Shows, schedule creation/edits, movie catalogue |
+| **Support** | `support@test.com` | `Support@1234` | Booking lookup, customer cancellation & refunds |
+| **Finance** | `finance@test.com` | `Finance@1234` | Revenue breakdown, tax reports & CSV export |
+| **Marketing** | `marketing@test.com` | `Marketing@1234` | Promotional visibility & dashboard monitoring |
 
 ---
 
@@ -257,21 +310,6 @@ node scripts/resetHallSeats.js --yes
 
 ---
 
-## Seeded Demo Accounts
-
-| Role | Email | Password |
-|---|---|---|
-| Customer | `user1@test.com` .. `user500@test.com` | `Test@1234` |
-| Super Admin | `admin@test.com` | `Admin@123` |
-| Operations | `ops@test.com` | `Ops@1234` |
-| Support | `support@test.com` | `Support@1234` |
-| Finance | `finance@test.com` | `Finance@1234` |
-| Marketing | `marketing@test.com` | `Marketing@1234` |
-
-Promo coupons active in seeded data: **`TICKET50`** (₹50 flat off, min order ₹200) and **`CINEMA20`** (20% off up to ₹100, min order ₹300).
-
----
-
-## License & Commercial Notice
+## Commercial & Compliance Notice
 
 Commercial deployment of online cinema ticketing requires executed agreements with theatre exhibitors, licensed studio media assets, valid GSTIN invoicing, and compliance with applicable film certification and consumer refund rules.
