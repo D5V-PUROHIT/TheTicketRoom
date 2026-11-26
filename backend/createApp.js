@@ -26,7 +26,16 @@ const adminFinanceRoutes = require('./routes/admin/adminFinanceRoutes');
 const adminAuditAndUserRoutes = require('./routes/admin/adminAuditAndUserRoutes');
 
 const app = express();
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    // Allow Google Identity Services OAuth popup (accounts.google.com/gsi/transform) to communicate via window.opener.
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginEmbedderPolicy: false,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  })
+);
 app.use(cors());
 app.use(express.json({ limit: '20kb' }));
 

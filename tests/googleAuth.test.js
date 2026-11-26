@@ -34,10 +34,14 @@ after(async () => {
   await pool.end();
 });
 
-test('GET /api/auth/google-config returns configured GOOGLE_CLIENT_ID', async () => {
-  const res = await call('/api/auth/google-config');
-  assert.equal(res.status, 200);
-  assert.equal(res.body.clientId, process.env.GOOGLE_CLIENT_ID);
+test('GET /api/auth/google-config returns configured GOOGLE_CLIENT_ID and sets Google-popup safe headers', async () => {
+  const raw = await fetch(`${base}/api/auth/google-config`);
+  assert.equal(raw.status, 200);
+  assert.equal(raw.headers.get('cross-origin-opener-policy'), 'same-origin-allow-popups');
+  assert.equal(raw.headers.get('referrer-policy'), 'strict-origin-when-cross-origin');
+
+  const body = await raw.json();
+  assert.equal(body.clientId, process.env.GOOGLE_CLIENT_ID);
 });
 
 test('POST /api/auth/google rejects missing or unverified credentials cleanly', async () => {

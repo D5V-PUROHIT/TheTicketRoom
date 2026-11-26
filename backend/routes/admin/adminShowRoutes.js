@@ -48,7 +48,6 @@ router.post('/shows', requireLogin, requireRole('operations'), catchAsync(async 
   const resolvedStartsAt = starts_at || parseShowTimestampIST(date_str, time_str);
 
   const newShow = await runTransaction(async (client) => {
-    await client.query(`SELECT setval('shows_id_seq', COALESCE((SELECT max(id) FROM shows), 1))`);
     const { rows: [created] } = await client.query(
       `INSERT INTO shows (movie_id, hall_id, starts_at, date_str, time_str, price_recliner, price_club, price_premium, status)
        VALUES ($1, $2, coalesce($3::timestamptz, now()), $4, $5, $6, $7, $8, 'open')
@@ -60,7 +59,6 @@ router.post('/shows', requireLogin, requireRole('operations'), catchAsync(async 
       'SELECT * FROM hall_seats WHERE hall_id = $1 ORDER BY id',
       [hall_id]
     );
-    await client.query(`SELECT setval('show_seats_id_seq', COALESCE((SELECT max(id) FROM show_seats), 1))`);
     for (const ts of templateSeats) {
       const price = ts.tier === 'recliner' ? pRecliner : ts.tier === 'club' ? pClub : pPremium;
       await client.query(
