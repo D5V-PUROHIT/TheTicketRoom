@@ -30,7 +30,13 @@ const reset = async () => {
 const login = async (n) =>
   (await call('/api/auth/login', { method: 'POST', body: { email: `user${n}@test.com`, password: 'Test@1234' } })).body.token;
 
+let savedShowStates = [];
+
 before(async () => {
+  const { rows } = await pool.query('SELECT id, status, starts_at FROM shows WHERE id IN (1, 2) ORDER BY id');
+  savedShowStates = rows;
+  // Temporarily ensure Show 1 & 2 are open and in the future during concurrency test execution
+  await pool.query(`UPDATE shows SET status = 'open', starts_at = now() + interval '7 days' WHERE id IN (1, 2)`);
   await reset();
   server = app.listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
@@ -39,6 +45,9 @@ before(async () => {
 after(async () => {
   server.close();
   await reset();
+  for (const s of savedShowStates) {
+    await pool.query('UPDATE shows SET status = $1, starts_at = $2 WHERE id = $3', [s.status, s.starts_at, s.id]);
+  }
   await pool.end();
 });
 

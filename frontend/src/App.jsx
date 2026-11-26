@@ -131,6 +131,7 @@ export default function App() {
             {view === 'portal' && (
               <HomeMoviePortal
                 movie={activeMovie}
+                openShows={openShows}
                 upcoming={upcomingList}
                 onBook={() => { setUpcomingModalMovie(null); setView('book'); }}
                 onSelectMovie={() => setView('movie-details')}
@@ -163,6 +164,7 @@ export default function App() {
                 online={online}
                 notify={notify}
                 onOpenAuth={() => openAuth('login')}
+                onRefreshShows={loadActiveMovie}
                 onBack={() => setView('portal')}
                 onGoMyBookings={() => setView('mine')}
                 onSuccess={(booking) => { setLastConfirmedBooking(booking); setView('confirmed'); }}

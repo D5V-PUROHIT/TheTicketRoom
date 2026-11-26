@@ -5,7 +5,7 @@ import { inr, pad } from '../../utils/formatters';
 import { calculateClientPricing } from '../../utils/pricingCalculator';
 import { suggestSmartSeats } from '../../utils/smartSeatSuggester';
 
-export default function SeatMapBookingPage({ user, movie, openShows = [], selectedShowId, onSelectShow, socket, online, notify, onOpenAuth, onBack, onGoMyBookings, onSuccess }) {
+export default function SeatMapBookingPage({ user, movie, openShows = [], selectedShowId, onSelectShow, socket, online, notify, onOpenAuth, onRefreshShows, onBack, onGoMyBookings, onSuccess }) {
   const activeShow = openShows.find((s) => s.id === selectedShowId) || openShows[0];
   const activeShowId = activeShow?.id || 1;
   const [seats, setSeats] = useState({});
@@ -67,6 +67,14 @@ export default function SeatMapBookingPage({ user, movie, openShows = [], select
   const remainingLimit = Math.max(0, (cfg.maxSeats || 4) - ownedCount);
   const expiry = myHeldSeats.length ? Math.min(...myHeldSeats.map((s) => +new Date(s.hold_expires_at))) : 0;
   const secondsLeft = Math.max(0, Math.ceil((expiry - now) / 1000));
+  const showStarted = Boolean(activeShow?.starts_at && now >= new Date(activeShow.starts_at).getTime());
+
+  useEffect(() => {
+    if (showStarted && openShows.length > 0 && onRefreshShows) {
+      onRefreshShows();
+      notify(`Showtime (${activeShow?.time_str || ''}) has started — online booking is now closed.`, 'warn');
+    }
+  }, [showStarted, openShows.length, activeShow?.time_str, onRefreshShows, notify]);
 
   // Derive tier prices directly from loaded seats (or show defaults) so custom <= Rs.100 shows display cleanly.
   const priceRecliner = allSeats.find((s) => s.tier === 'recliner')?.price ?? activeShow?.price_recliner ?? 350;
@@ -127,6 +135,7 @@ export default function SeatMapBookingPage({ user, movie, openShows = [], select
       mergeUpdates(res.seats);
     } catch (e) {
       notify(e.message, 'err');
+      if (e.code === 'SHOW_STARTED' || e.code === 'BOOKING_CLOSED') onRefreshShows?.();
       loadSeats();
     } finally {
       setBusy(false);
@@ -156,6 +165,7 @@ export default function SeatMapBookingPage({ user, movie, openShows = [], select
       notify(`Selected ${count} seat${count > 1 ? 's' : ''} (${suggestion.strategy})!`, 'ok');
     } catch (e) {
       notify(e.message, 'err');
+      if (e.code === 'SHOW_STARTED' || e.code === 'BOOKING_CLOSED') onRefreshShows?.();
       loadSeats();
     } finally {
       setBusy(false);
@@ -182,6 +192,7 @@ export default function SeatMapBookingPage({ user, movie, openShows = [], select
     } catch (e) {
       if (e.code !== 'NETWORK') idempotencyKey.current = crypto.randomUUID();
       notify(e.message, 'err');
+      if (e.code === 'SHOW_STARTED' || e.code === 'BOOKING_CLOSED') onRefreshShows?.();
       loadSeats();
     } finally {
       setBusy(false);
@@ -203,12 +214,14 @@ export default function SeatMapBookingPage({ user, movie, openShows = [], select
     }
   };
 
-  if (openShows.length === 0) {
+  if (openShows.length === 0 || showStarted) {
     return (
       <div className="theatre-screen-view" style={{ padding: '80px 24px', textAlign: 'center' }}>
         <div style={{ fontSize: 40, marginBottom: 12 }}>🎬</div>
-        <h2 style={{ marginBottom: 8 }}>No Open Showtimes Scheduled</h2>
-        <p style={{ color: 'var(--mute)', marginBottom: 20 }}>Please check back later or return to the movie portal.</p>
+        <h2 style={{ marginBottom: 8 }}>Online Booking Closed</h2>
+        <p style={{ color: 'var(--mute)', marginBottom: 20 }}>
+          No open showtimes are currently accepting bookings (past showtimes close automatically at start time).
+        </p>
         <button className="btn-primary" onClick={onBack}>Back to Movies</button>
       </div>
     );

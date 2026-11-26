@@ -27,12 +27,14 @@ TheTicketRoom/
 │   │   ├── gstAndPricingService.js   # Ticket CGST+SGST slabs (5% <= Rs.100, 18% > Rs.100)
 │   │   ├── seatHoldService.js        # Concurrency-safe 2-minute seat lock & 4-seat limit check
 │   │   ├── ticketBookingService.js   # Booking confirmation (idempotent) & customer cancellation
+│   │   ├── showCutoffService.js      # Booking cutoff at showtime (SHOW_STARTED / BOOKING_CLOSED)
 │   │   ├── showScheduleService.js    # Locks show edits/cancellations once tickets are booked
 │   │   ├── paymentGatewayService.js  # Razorpay test-mode order, signature & refund helper
 │   │   └── emailNotificationService.js # Non-blocking e-ticket email queue
 │   ├── utils/
 │   │   ├── auditLogger.js            # Writes admin actions into append-only audit_logs
-│   │   └── seatBroadcast.js          # Pushes live WebSocket seat changes to connected users
+│   │   ├── seatBroadcast.js          # Pushes live WebSocket seat changes to connected users
+│   │   └── showtimeParser.js         # Converts readable show date & time into IST starts_at
 │   └── routes/
 │       ├── authRoutes.js             # /api/auth/login & /api/auth/register
 │       ├── movieAndShowRoutes.js     # Public movie details & showtime listings
@@ -71,6 +73,7 @@ TheTicketRoom/
 ├── tests/                            # Automated verification suite (npm test)
 │   ├── concurrency.test.js           # 200-user race, 300-user overlap, multi-show & lock rules
 │   ├── gstSlabPricing.test.js        # 5% (<= Rs.100) & 18% (> Rs.100) GST slab tests
+│   ├── showBookingCutoff.test.js     # Stops bookings at showtime & closes expired shows
 │   └── smartSeatSuggester.test.js    # Smart Quick-Select rules for 1, 2, 3 & 4 seats
 │
 ├── scripts/

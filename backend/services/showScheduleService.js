@@ -2,6 +2,7 @@
 const { runTransaction } = require('../database/connection');
 const { AppError } = require('../middleware/errorMiddleware');
 const { logAdminAction } = require('../utils/auditLogger');
+const { parseShowTimestampIST } = require('../utils/showtimeParser');
 
 /**
  * Updates show date, time, or status safely.
@@ -43,10 +44,13 @@ async function updateShowScheduleOrStatus({ showId, date_str, time_str, status, 
     const nextStatus = status || show.status;
     const nextDate = date_str ? date_str.trim() : show.date_str;
     const nextTime = time_str ? time_str.trim() : show.time_str;
+    const nextStartsAt = parseShowTimestampIST(nextDate, nextTime);
 
     const { rows: [updated] } = await client.query(
-      'UPDATE shows SET status = $1, date_str = $2, time_str = $3 WHERE id = $4 RETURNING *',
-      [nextStatus, nextDate, nextTime, showId]
+      `UPDATE shows
+       SET status = $1, date_str = $2, time_str = $3, starts_at = COALESCE($4::timestamptz, starts_at)
+       WHERE id = $5 RETURNING *`,
+      [nextStatus, nextDate, nextTime, nextStartsAt, showId]
     );
 
     let releasedSeatIds = [];

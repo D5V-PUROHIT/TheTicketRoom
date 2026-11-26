@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { pool, runTransaction } = require('../database/connection');
 const { AppError } = require('../middleware/errorMiddleware');
 const { calculateBookingPricing } = require('./gstAndPricingService');
+const { assertShowOpenForBooking } = require('./showCutoffService');
 
 // Shared SQL query returning full booking details including seat list and show date/time.
 const BOOKING_DETAILS_QUERY = `SELECT b.id, b.show_id, b.reference, b.total_price, b.subtotal, b.discount_amount,
@@ -28,11 +29,6 @@ async function confirmBookingForUser({ userId, idempotencyKey, showId, couponCod
   return runTransaction(async (client) => {
     await client.query('SELECT 1 FROM users WHERE id = $1 FOR UPDATE', [userId]);
 
-    const { rows: [showRow] } = await client.query('SELECT id, status FROM shows WHERE id = $1 FOR SHARE', [showId]);
-    if (showRow && showRow.status === 'cancelled') {
-      throw new AppError(409, 'SHOW_CANCELLED', 'This showtime has been cancelled.');
-    }
-
     // Replay previous booking if same Idempotency-Key arrives twice.
     const prior = await client.query(
       `${BOOKING_DETAILS_QUERY} WHERE b.user_id = $1 AND b.idempotency_key = $2 GROUP BY b.id`,
@@ -41,6 +37,13 @@ async function confirmBookingForUser({ userId, idempotencyKey, showId, couponCod
     if (prior.rows[0]) {
       return { booking: prior.rows[0], replayed: true, seatIds: [] };
     }
+
+    // Verify show is still open and before booking cutoff (starts_at).
+    const { rows: [showRow] } = await client.query(
+      'SELECT id, status, starts_at, time_str FROM shows WHERE id = $1 FOR SHARE',
+      [showId]
+    );
+    assertShowOpenForBooking(showRow);
 
     // Lock user's held seats in ascending ID order.
     const { rows: heldSeats } = await client.query(

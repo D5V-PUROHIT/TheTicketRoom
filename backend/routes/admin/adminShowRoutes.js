@@ -6,6 +6,7 @@ const { AppError, catchAsync } = require('../../middleware/errorMiddleware');
 const { updateShowScheduleOrStatus } = require('../../services/showScheduleService');
 const { logAdminAction } = require('../../utils/auditLogger');
 const { broadcastSeatsSafe } = require('../../utils/seatBroadcast');
+const { parseShowTimestampIST } = require('../../utils/showtimeParser');
 
 const router = express.Router();
 
@@ -44,6 +45,7 @@ router.post('/shows', requireLogin, requireRole('operations'), catchAsync(async 
   const pRecliner = Math.max(1, Math.round(Number(price_recliner) || 350));
   const pClub = Math.max(1, Math.round(Number(price_club) || 250));
   const pPremium = Math.max(1, Math.round(Number(price_premium) || 180));
+  const resolvedStartsAt = starts_at || parseShowTimestampIST(date_str, time_str);
 
   const newShow = await runTransaction(async (client) => {
     await client.query(`SELECT setval('shows_id_seq', COALESCE((SELECT max(id) FROM shows), 1))`);
@@ -51,7 +53,7 @@ router.post('/shows', requireLogin, requireRole('operations'), catchAsync(async 
       `INSERT INTO shows (movie_id, hall_id, starts_at, date_str, time_str, price_recliner, price_club, price_premium, status)
        VALUES ($1, $2, coalesce($3::timestamptz, now()), $4, $5, $6, $7, $8, 'open')
        RETURNING *`,
-      [movie_id, hall_id, starts_at || null, date_str.trim(), time_str.trim(), pRecliner, pClub, pPremium]
+      [movie_id, hall_id, resolvedStartsAt || null, date_str.trim(), time_str.trim(), pRecliner, pClub, pPremium]
     );
 
     const { rows: templateSeats } = await client.query(

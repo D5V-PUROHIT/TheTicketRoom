@@ -8,6 +8,7 @@ const fs = require('fs');
 
 const { pool } = require('./database/connection');
 const { broadcastSeatsSafe } = require('./utils/seatBroadcast');
+const { closeExpiredShows } = require('./services/showCutoffService');
 const { unknownApiHandler, globalErrorHandler } = require('./middleware/errorMiddleware');
 
 const authRoutes = require('./routes/authRoutes');
@@ -45,9 +46,11 @@ app.use('/api/admin', adminSupportRoutes);
 app.use('/api/admin', adminFinanceRoutes);
 app.use('/api/admin', adminAuditAndUserRoutes);
 
-// Background cleaner: every 3 seconds, releases expired 2-minute holds and broadcasts updates.
+// Background cleaner: every 3 seconds, releases expired 2-minute holds and closes shows at starts_at.
 setInterval(async () => {
   try {
+    await closeExpiredShows(app);
+
     const { rows: expired } = await pool.query(`
       UPDATE show_seats
       SET status = 'available', held_by = NULL, hold_expires_at = NULL

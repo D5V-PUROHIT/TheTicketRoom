@@ -1,7 +1,12 @@
 // Customer home screen showing the featured Hero show banner, Now Showing card, and Upcoming Releases.
 import { inr } from '../../utils/formatters';
 
-export default function HomeMoviePortal({ movie, upcoming, onBook, onSelectMovie, onSelectUpcoming }) {
+export default function HomeMoviePortal({ movie, openShows = [], upcoming, onBook, onSelectMovie, onSelectUpcoming }) {
+  const hasOpenShow = openShows.length > 0;
+  const primaryShow = openShows[0];
+  const displayDate = primaryShow?.date_str || movie.date_str;
+  const displayTime = primaryShow?.time_str || movie.time_str;
+
   const scrollToUpcoming = () => {
     const el = document.getElementById('upcoming-releases');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
@@ -18,7 +23,7 @@ export default function HomeMoviePortal({ movie, upcoming, onBook, onSelectMovie
         <div className="hero-content">
           <div className="premiere-pill">
             <span className="live-pulse-dot"></span>
-            <span>TONIGHT'S PREMIERE SHOW • HALL 1</span>
+            <span>{hasOpenShow ? "TONIGHT'S PREMIERE SHOW • HALL 1" : 'BOOKING CLOSED • HALL 1'}</span>
           </div>
 
           <h1 className="hero-title">{movie.title}</h1>
@@ -36,19 +41,25 @@ export default function HomeMoviePortal({ movie, upcoming, onBook, onSelectMovie
             <span>⏱ {movie.duration || '2h 39m'}</span><span>•</span>
             <span>🎭 {movie.genre}</span><span>•</span>
             <span>🗣 {movie.language}</span><span>•</span>
-            <span>🗓 <b>{movie.date_str} at {movie.time_str}</b></span>
+            <span>🗓 <b>{displayDate} at {displayTime}</b></span>
           </div>
 
           <p className="hero-synopsis">{movie.synopsis}</p>
 
           <div className="hero-ctas">
-            <button className="btn-hero-book" onClick={onBook}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <rect x="2" y="4" width="20" height="16" rx="2" />
-                <path d="M7 4v16" strokeDasharray="2 2" />
-              </svg>
-              <span>Book Tickets ({movie.time_str})</span>
-            </button>
+            {hasOpenShow ? (
+              <button className="btn-hero-book" onClick={onBook}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <path d="M7 4v16" strokeDasharray="2 2" />
+                </svg>
+                <span>Book Tickets ({displayTime})</span>
+              </button>
+            ) : (
+              <button className="btn-hero-book" onClick={scrollToUpcoming} style={{ background: '#475569', boxShadow: 'none' }}>
+                <span>Showtime Closed • See Upcoming Releases ↓</span>
+              </button>
+            )}
             <button className="btn-ghost" style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.25)' }} onClick={() => onSelectMovie(movie)}>
               View Full Story & Cast →
             </button>
@@ -59,10 +70,16 @@ export default function HomeMoviePortal({ movie, upcoming, onBook, onSelectMovie
       {/* Now Showing Card */}
       <div style={{ margin: '36px 0 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <h2 style={{ fontSize: 22 }}>Now Showing</h2>
-          <span style={{ background: 'var(--mint-soft)', color: '#15803d', border: '1px solid rgba(56,194,143,0.4)', padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700 }}>
-            ● Booking Open • Hall 1
-          </span>
+          <h2 style={{ fontSize: 22 }}>{hasOpenShow ? 'Now Showing' : 'Latest Screening'}</h2>
+          {hasOpenShow ? (
+            <span style={{ background: 'var(--mint-soft)', color: '#15803d', border: '1px solid rgba(56,194,143,0.4)', padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700 }}>
+              ● Booking Open • Hall 1
+            </span>
+          ) : (
+            <span style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700 }}>
+              ● Booking Closed (Showtime Started)
+            </span>
+          )}
         </div>
         <button type="button" onClick={scrollToUpcoming} style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 700, cursor: 'pointer' }}>
           See Upcoming Releases ({upcoming.length}) ↓
@@ -72,8 +89,8 @@ export default function HomeMoviePortal({ movie, upcoming, onBook, onSelectMovie
       <article className="now-showing-card">
         <div onClick={() => onSelectMovie(movie)} style={{ position: 'relative', minHeight: 300, background: '#1c1917', cursor: 'pointer' }}>
           <img src={movie.poster_url || '/posters/bahubali.jpg'} alt={movie.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={(e) => { e.target.src = '/posters/bahubali.jpg'; }} />
-          <span style={{ position: 'absolute', top: 10, left: 10, background: '#16a34a', color: '#ffffff', padding: '4px 10px', borderRadius: 99, fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>
-            ● NOW SHOWING
+          <span style={{ position: 'absolute', top: 10, left: 10, background: hasOpenShow ? '#16a34a' : '#dc2626', color: '#ffffff', padding: '4px 10px', borderRadius: 99, fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>
+            {hasOpenShow ? '● NOW SHOWING' : '● BOOKING CLOSED'}
           </span>
           <span style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(0,0,0,0.78)', color: '#fbbf24', padding: '3px 9px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
             ★ {movie.rating || '9.6'}/10
@@ -96,10 +113,10 @@ export default function HomeMoviePortal({ movie, upcoming, onBook, onSelectMovie
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
               <div style={{ background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 14px', fontSize: 13 }}>
-                <span style={{ color: 'var(--mute)' }}>Show Date: </span><b>{movie.date_str}</b>
+                <span style={{ color: 'var(--mute)' }}>Show Date: </span><b>{displayDate}</b>
               </div>
               <div style={{ background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 14px', fontSize: 13 }}>
-                <span style={{ color: 'var(--mute)' }}>Showtime: </span><b style={{ color: 'var(--accent)' }}>{movie.time_str} • Hall 1</b>
+                <span style={{ color: 'var(--mute)' }}>Showtime: </span><b style={{ color: 'var(--accent)' }}>{displayTime} • Hall 1</b>
               </div>
               <div style={{ background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 14px', fontSize: 13 }}>
                 <span style={{ color: 'var(--mute)' }}>Tickets from </span><b>{inr(180)} – {inr(350)}</b>
@@ -108,9 +125,15 @@ export default function HomeMoviePortal({ movie, upcoming, onBook, onSelectMovie
           </div>
 
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', paddingTop: 12, borderTop: '1px solid var(--line)' }}>
-            <button className="btn-primary" style={{ padding: '10px 24px', fontSize: 14 }} onClick={onBook}>
-              🎟️ Book Tickets ({movie.time_str})
-            </button>
+            {hasOpenShow ? (
+              <button className="btn-primary" style={{ padding: '10px 24px', fontSize: 14 }} onClick={onBook}>
+                🎟️ Book Tickets ({displayTime})
+              </button>
+            ) : (
+              <button className="btn-ghost" disabled style={{ padding: '10px 24px', fontSize: 14, opacity: 0.65, cursor: 'not-allowed', color: '#dc2626', borderColor: '#fca5a5' }}>
+                Online Booking Closed
+              </button>
+            )}
             <button className="btn-ghost" onClick={() => onSelectMovie(movie)}>View Details & Cast</button>
           </div>
         </div>

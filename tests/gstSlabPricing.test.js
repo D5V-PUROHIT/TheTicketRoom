@@ -93,7 +93,7 @@ test('End-to-end API applies 5% CGST+SGST slab and Rs.20 Platform Fee when seat 
     body: {
       movie_id: 1,
       hall_id: 1,
-      date_str: 'Saturday, 28 November, 2026',
+      date_str: 'Sunday, 28 November, 2027',
       time_str: '11:00 AM',
       price_recliner: 100,
       price_club: 90,

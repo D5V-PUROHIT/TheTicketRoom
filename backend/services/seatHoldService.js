@@ -3,6 +3,7 @@ const { pool, runTransaction } = require('../database/connection');
 const { initializeDatabase } = require('../database/startupSetup');
 const { MAX_SEATS_PER_USER, HOLD_DURATION_SECONDS, SEAT_VIEW_COLUMNS } = require('../config/bookingRules');
 const { AppError } = require('../middleware/errorMiddleware');
+const { assertShowOpenForBooking } = require('./showCutoffService');
 
 /**
  * Fetches all 100 seats for a show plus how many seats this user has already booked.
@@ -76,11 +77,14 @@ async function holdSeatsForUser({ userId, showId, requestedIds }) {
     // Lock user row first so parallel requests from the same account cannot bypass the 4-seat quota.
     await client.query('SELECT 1 FROM users WHERE id = $1 FOR UPDATE', [userId]);
 
-    // Prevent booking seats on a cancelled show.
-    const { rows: [showRow] } = await client.query('SELECT id, status FROM shows WHERE id = $1 FOR SHARE', [showId]);
+    // Prevent booking seats on cancelled, closed, or already-started shows.
+    const { rows: [showRow] } = await client.query(
+      'SELECT id, status, starts_at, time_str FROM shows WHERE id = $1 FOR SHARE',
+      [showId]
+    );
     if (!showRow) throw new AppError(404, 'NOT_FOUND', 'Show not found');
-    if (showRow.status === 'cancelled') {
-      throw new AppError(409, 'SHOW_CANCELLED', 'This showtime has been cancelled and is no longer accepting bookings.');
+    if (seatIds.length > 0 || showRow.status === 'cancelled') {
+      assertShowOpenForBooking(showRow);
     }
 
     // Check total already-booked seats + newly requested seats against strict 4-seat cap.

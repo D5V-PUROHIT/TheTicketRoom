@@ -1,10 +1,13 @@
-// Central booking rules, seat limits, and Indian GST tax rates.
+// Central booking rules, seat limits, cutoff window, and Indian GST tax rates.
 module.exports = {
   // Maximum tickets one customer account can hold or book per show.
   MAX_SEATS_PER_USER: 4,
 
   // How long a selected seat stays locked (2 minutes) before auto-releasing.
   HOLD_DURATION_SECONDS: 120,
+
+  // Minutes before starts_at when online booking closes (0 = stops right at showtime starts_at).
+  BOOKING_CUTOFF_MINUTES: process.env.BOOKING_CUTOFF_MINUTES ? Number(process.env.BOOKING_CUTOFF_MINUTES) : 0,
 
   // Flat platform fee charged per booking (in INR). No extra GST applied on top.
   PLATFORM_FEE_INR: 20,
