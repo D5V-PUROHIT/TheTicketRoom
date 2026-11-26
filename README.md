@@ -115,6 +115,7 @@ TheTicketRoom/
 │
 ├── tests/                                # Automated Node test suite (npm test)
 │   ├── concurrency.test.js               # 200-user race, 300-user overlap, multi-show & lock tests
+│   ├── googleAuth.test.js                # Google OAuth ID-token login, linking & suspension checks
 │   ├── gstSlabPricing.test.js            # 5% / 18% CGST+SGST & end-to-end invoice verification
 │   ├── showBookingCutoff.test.js         # Showtime cutoff, SHOW_STARTED/BOOKING_CLOSED & auto-close tests
 │   └── smartSeatSuggester.test.js        # Smart Quick-Select rules across tiers & fallbacks
@@ -138,6 +139,8 @@ TheTicketRoom/
 |---|---|---|---|
 | `POST` | `/api/auth/register` | Public | Register a new customer account |
 | `POST` | `/api/auth/login` | Public | Authenticate user or staff; returns JWT token |
+| `POST` | `/api/auth/google` | Public | Verify Google Sign-In ID token & issue JWT |
+| `GET` | `/api/auth/google-config` | Public | Expose configured Google OAuth Client ID to client |
 | `GET` | `/api/movie` | Public | Current active screening metadata & open booking flag |
 | `GET` | `/api/movies` | Public | List active movies with bookable/scheduled shows |
 | `GET` | `/api/movies/:id` | Public | Movie details and open/scheduled showtimes |
@@ -194,6 +197,7 @@ PGSSL=false
 ```
 
 Optional environment variables:
+- `GOOGLE_CLIENT_ID`: Google Cloud Web OAuth Client ID to enable "Continue with Google" sign-in.
 - `BOOKING_CUTOFF_MINUTES` (default `0`): Closes online holds/bookings that many minutes before `starts_at`.
 - `PG_MAX_POOL` (default `50`): PostgreSQL connection pool size.
 - `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET`: Gateway credentials for payment order/webhook signatures.
@@ -221,8 +225,9 @@ For active development, run `npm run dev` (watches `backend/server.js`) and `npm
 ## Testing & Load Verification
 
 ### 1. Automated Test Suite (`npm test`)
-Runs **14 automated tests** covering concurrency, GST slabs, showtime cutoffs, and smart seat selection:
+Runs **17 automated tests** covering concurrency, Google Sign-In, GST slabs, showtime cutoffs, and smart seat selection:
 - `tests/concurrency.test.js`: 200-user same-seat race, 300-user random overlap, multi-show isolation, and strict showtime lock/cancel rules.
+- `tests/googleAuth.test.js`: Google OAuth token verification, account creation/linking, password-login guard, and suspension checks.
 - `tests/gstSlabPricing.test.js`: 5% (`<= ₹100`) and 18% (`> ₹100`) CGST+SGST slabs, mixed-tier orders, flat `₹20` Platform Fee, and end-to-end API verification.
 - `tests/showBookingCutoff.test.js`: IST date/time parsing, `409 SHOW_STARTED` / `BOOKING_CLOSED` enforcement on holds and confirmations, public query exclusion, and automated closing via `closeExpiredShows()`.
 - `tests/smartSeatSuggester.test.js`: All tier priority, corner-pair, center `3–8`, and close-proximity fallback paths.

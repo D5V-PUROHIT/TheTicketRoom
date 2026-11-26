@@ -1,11 +1,75 @@
-// Sign In and Register popup modal with 1-click demo customer and admin login helpers.
-import { useState } from 'react';
+// Sign In and Register popup modal with Google Sign-In, email/password form, and demo login helpers.
+import { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '../../services/apiClient';
 
 export default function AuthModal({ defaultMode = 'login', onClose, onAuth, notify }) {
   const [mode, setMode] = useState(defaultMode);
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [busy, setBusy] = useState(false);
+  const [googleClientId, setGoogleClientId] = useState(() => import.meta.env.VITE_GOOGLE_CLIENT_ID || '');
+  const googleBtnRef = useRef(null);
+  const onAuthRef = useRef(onAuth);
+  const notifyRef = useRef(notify);
+
+  useEffect(() => {
+    onAuthRef.current = onAuth;
+    notifyRef.current = notify;
+  }, [onAuth, notify]);
+
+  // Fetch Google Client ID from backend runtime config if not injected at Vite build time.
+  useEffect(() => {
+    if (googleClientId) return;
+    apiRequest('/auth/google-config')
+      .then((d) => { if (d?.clientId) setGoogleClientId(d.clientId); })
+      .catch(() => {});
+  }, [googleClientId]);
+
+  // Render Google Identity Services button once clientId and GSI script are both ready.
+  useEffect(() => {
+    if (!googleClientId || !googleBtnRef.current) return;
+    let cancelled = false;
+
+    const initGoogleBtn = () => {
+      if (cancelled || !window.google?.accounts?.id || !googleBtnRef.current) return false;
+      googleBtnRef.current.innerHTML = '';
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: async (response) => {
+          if (!response?.credential) return;
+          setBusy(true);
+          try {
+            const data = await apiRequest('/auth/google', {
+              method: 'POST',
+              body: { credential: response.credential },
+            });
+            onAuthRef.current(data);
+          } catch (err) {
+            notifyRef.current(err.message, 'err');
+          } finally {
+            setBusy(false);
+          }
+        },
+      });
+      window.google.accounts.id.renderButton(googleBtnRef.current, {
+        theme: 'outline',
+        size: 'large',
+        width: 372,
+        text: 'continue_with',
+        shape: 'pill',
+      });
+      return true;
+    };
+
+    if (initGoogleBtn()) return;
+    const poll = setInterval(() => {
+      if (initGoogleBtn()) clearInterval(poll);
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
+  }, [googleClientId]);
 
   const fillDemo = (email, password) => {
     setMode('login');
@@ -41,7 +105,7 @@ export default function AuthModal({ defaultMode = 'login', onClose, onAuth, noti
 
         <div style={{ padding: '24px' }}>
           {/* Quick Demo Buttons */}
-          <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
             <button type="button" className="btn-ghost" style={{ flex: 1, fontSize: 12, padding: '7px 8px' }} onClick={() => fillDemo('user1@test.com', 'Test@1234')}>
               ⚡ User 1 (Demo)
             </button>
@@ -49,6 +113,18 @@ export default function AuthModal({ defaultMode = 'login', onClose, onAuth, noti
               👑 Admin Dashboard
             </button>
           </div>
+
+          {/* Google Identity Sign-In Button */}
+          {googleClientId && (
+            <>
+              <div ref={googleBtnRef} style={{ display: 'flex', justifyContent: 'center', minHeight: 44 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0', color: 'var(--mute)', fontSize: 12 }}>
+                <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+                <span>or continue with email</span>
+                <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+              </div>
+            </>
+          )}
 
           <form onSubmit={handleSubmit}>
             {mode === 'register' && (
